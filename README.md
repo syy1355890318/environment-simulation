@@ -31,9 +31,23 @@ Package weight, robot width, and payload capacity are editable before pickup. We
 
 **Reset simulation** begins a new cycle while stationary. The model’s original delivery cycle never permits a delivered package to be picked up again. State is in memory and resets when the page reloads. Decorative city geometry and entity markers are illustrative; the displayed numeric attributes govern passage rules.
 
-## Model
+## Location Explorer
+
+Open **Location Explorer** in the toolbar. It offers two representations of the same ground-plane position: numeric `(x, z)` coordinates in meters and a named-place or route description. East is `+x`; north is `−z`.
+
+- **Object:** locate the robot, package, or any path segment. Robot and package queries follow movement live. Paths retain their complete start/end extent; their point marker is explicitly the midpoint.
+- **Occupants:** choose a landmark, enter coordinates, or use **Pick a location on the map**. Query robot and package within a nonnegative search radius (default 0.5 m, boundary included with 1e-7 m numerical tolerance). Both can occupy a point; co-location never implies carrying. Path context is listed separately.
+- **Describe:** resolve `pickup`, `destination`, named junctions, whole path names, `halfway along Garden Passage`, `50% along S2`, or `6 m along Garden Passage`. The Garden midpoint is `(-2, 2)` m. Ambiguous terms such as `junction` show explicit candidates; unknown descriptions do not invent a location.
+- **Reference frame:** switch between World and Relative to pickup. World `(-2, -4)` becomes `(10, -12)` relative to pickup, meaning 10 m east and 12 m north of pickup. Changing frames converts the same selected point rather than moving an entity.
+
+The blue marker and path highlights identify query results. Screen anchors are camera-derived CSS pixel coordinates relative to the page viewport and update during orbit, zoom, and resize. Map picking uses the same ground-plane transform. Querying locations never changes delivery state. Uncarried packages share their semantic x/z anchor with their scene position; vertical separation makes colocated entities visible and is illustrative.
+
+## Implementation
 
 - `dist/model.js` owns the robot, package, route, bidirectional carrying relationship, traversal, and action validation.
+- `dist/locations.js` derives landmarks, descriptions, occupancy, reference frames, and description resolution from model state.
+- `dist/location-ui.js` and `dist/locations.css` provide the responsive Location Explorer.
+- `dist/projection.js` shares the world-to-screen and screen-to-ground transforms.
 - `dist/scene.js` renders geometry, moving entities, route states, and camera controls.
 - `dist/app.js` connects the toolbar, live entity inspectors, activity log, responsive dialogs, and optional WebMCP browser actions to the same model.
 - `dist/index.html` and `dist/style.css` define the accessible interface.
@@ -43,9 +57,9 @@ Coordinates use the horizontal x and z axes, in meters. Movement only starts at 
 ## Test
 
 ```sh
-node --test tests/model.test.js
+node --test tests/*.test.js
 ```
 
-Nine tests cover initial state, numeric validation, pickup boundaries, disconnected routes, blocked and equal-width passages, continuous movement, action exclusivity, waiting with a package, and explicit terminal delivery.
+Nineteen tests cover the nine original delivery-rule cases plus location frames, co-location and ownership, occupancy boundaries, landmark/segment distinctions, ambiguous descriptions, and camera/viewport projection round trips.
 
 The optional WebMCP tools expose read, pickup, move, wait, deliver, and stationary passage editing in supporting browsers. All use the visible interface’s shared model.
