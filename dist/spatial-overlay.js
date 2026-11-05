@@ -4,7 +4,7 @@ import {snapToCell} from './spatial.js';
 
 export const INDICATOR_COLORS = {
   adjacent: 0x2f8f6b, adjacentObstacle: 0x12806f, between: 0x3f6fb5, among: 0x8a4fb0, crowd: 0xc8503c, warning: 0xe09a1e,
-  toward: 0x2f9e5f, away: 0xd2703a, past: 0x3b7f9c, into: 0x2f9e5f, out: 0xd2703a, zone: 0x8aa37a, still: 0xa9b6a0
+  toward: 0x2f9e5f, away: 0xd2703a, past: 0x3b7f9c, into: 0x2f9e5f, out: 0xd2703a, zone: 0xcfcec6, still: 0xb9b8b0
 };
 const OVERLAY_Y = 0.3, TRAIL_POINTS = 60, PIN_LIFETIME = 4000, FLASH_LIFETIME = 1500;
 
@@ -52,14 +52,14 @@ function occupantFigure(type) {
   };
   if (type === 'cone') {
     add(new THREE.BoxGeometry(1.1, 0.08, 1.1), mat(0x4a4f45), 0.1);
-    add(new THREE.ConeGeometry(0.46, 1.25, 20), mat(0xee8f2e), 0.76);
+    add(new THREE.ConeGeometry(0.46, 1.25, 20), mat(0xe0921c), 0.76);
     add(new THREE.CylinderGeometry(0.2, 0.3, 0.2, 20), mat(0xf8f4e7), 0.72);
   } else {
-    const body = type === 'recipient' ? 0x4f8f62 : 0x5f7fa8;
+    const body = type === 'recipient' ? 0x1d9e75 : 0x55554f;
     add(new THREE.CylinderGeometry(0.26, 0.36, 1.15, 16), mat(body), 0.68);
-    add(new THREE.SphereGeometry(0.27, 16, 12), mat(0xe9c9a6), 1.52);
+    add(new THREE.SphereGeometry(0.27, 16, 12), mat(0xe9e6df), 1.52);
     if (type === 'recipient') {
-      const halo = add(new THREE.TorusGeometry(0.58, 0.05, 8, 32), mat(0x4f8f62), 0.14);
+      const halo = add(new THREE.TorusGeometry(0.58, 0.05, 8, 32), mat(0x1d9e75), 0.14);
       halo.rotation.x = Math.PI / 2;
     }
   }
@@ -162,7 +162,7 @@ export function createSpatialOverlay(scene, labelHost, placeLabel) {
     }
   }
 
-  function syncFigures(occupants) {
+  function syncFigures(occupants, attention) {
     const live = new Set(occupants.map(occupant => occupant.id));
     for (const [id, figure] of figures) if (!live.has(id)) {
       scene.remove(figure);
@@ -184,29 +184,29 @@ export function createSpatialOverlay(scene, labelHost, placeLabel) {
         if (!mesh.userData.material) mesh.userData.material = mesh.material;
         mesh.material = held && !dragPreview.valid ? invalidMaterial : mesh.userData.material;
       });
-      label(occupant.id, `occupant spatial-${occupant.type}`, position, 2.1);
+      if (held || attention.includes(occupant.id)) label(occupant.id, 'occupant', position, 2.2);
     }
   }
 
-  function update(snapshot, occupants) {
+  function update(snapshot, occupants, attention = []) {
     labelCount = 0;
     rebuildStatic(snapshot);
     liveLayer.clear();
-    syncFigures(occupants);
+    syncFigures(occupants, attention);
     const positionOf = id => occupants.find(occupant => occupant.id === id)?.position;
 
     for (const pair of snapshot.relations.adjacent) {
       const middle = {x: (pair.from.x + pair.to.x) / 2, z: (pair.from.z + pair.to.z) / 2};
-      label(pair.acrossObstacle ? 'Adjacent · no open cell between' : 'Adjacent', pair.acrossObstacle ? 'adjacent-obstacle' : 'adjacent', middle);
+      label(pair.acrossObstacle ? 'Adjacent across building' : 'Adjacent', pair.acrossObstacle ? 'adjacent-obstacle' : 'adjacent', middle);
     }
-    for (const triple of snapshot.relations.between) label(`${triple.middle} between ${triple.a} and ${triple.c}`, 'between', triple.point, 0.3, 26);
-    for (const group of snapshot.relations.among) label(`${group.center} among ${group.others.length}`, 'among', group.point, 0.3, 26);
-    for (const crowd of snapshot.crowds) label(`Crowd of ${crowd.members.length}`, 'crowd', {x: crowd.center.x, z: crowd.center.z + crowd.radius});
+    for (const triple of snapshot.relations.between) label('Between', 'between', triple.point, 0.3, 22);
+    for (const group of snapshot.relations.among) label('Among', 'among', group.point, 0.3, 22);
+    for (const crowd of snapshot.crowds) label('Crowd', 'crowd', {x: crowd.center.x, z: crowd.center.z + crowd.radius});
 
     if (snapshot.warnings.length && snapshot.robot) {
       warningMaterial.opacity = 0.55 + 0.4 * Math.sin(snapshot.time / 120);
       liveLayer.add(ring(snapshot.robot, 2 + 0.25 * Math.sin(snapshot.time / 120), warningMaterial));
-      label('Warning · slowing', 'warning', snapshot.robot, 2.6);
+      label('Slowing', 'warning', snapshot.robot, 2.6);
     }
     for (const trend of snapshot.trends) {
       const from = trend.moverPosition || positionOf(trend.mover);
@@ -221,14 +221,14 @@ export function createSpatialOverlay(scene, labelHost, placeLabel) {
         const pin = flat(diamond, materials.past, event.position.x, event.position.z, 0.34);
         pin.scale.setScalar(1.1);
         liveLayer.add(pin);
-        label(`${event.mover} past ${event.referentName} · ${event.closest.toFixed(1)} m`, 'past', event.position, 0.3, -6);
+        label(`Past ${event.referentName}`, 'past', event.position, 0.3, -6);
       }
       if ((event.kind === 'into' || event.kind === 'out') && event.age <= FLASH_LIFETIME) {
         const zone = snapshot.zones.find(item => item.id === event.referent);
         if (zone) {
           const grow = event.kind === 'into' ? 1 - event.age / FLASH_LIFETIME : event.age / FLASH_LIFETIME;
           liveLayer.add(ring(zone.position, zone.radius * (1 + 0.15 * grow), materials[event.kind]));
-          label(`${event.mover} ${event.kind === 'into' ? 'into' : 'out of'} ${zone.name}`, event.kind, event.position, 0.3, -6);
+          label(`${event.kind === 'into' ? 'Into' : 'Out of'} ${zone.name}`, event.kind, event.position, 0.3, -6);
         }
       }
     }

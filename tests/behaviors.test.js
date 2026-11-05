@@ -128,6 +128,7 @@ test('the first open cell is really open and off the route', () => {
   const cell = system.firstOpenCell();
   assert.equal(system.placementProblem(null, cell), null);
   assert.ok(state.segments.every(s => distanceToSegment(cell, s.start, s.end) >= 1));
+  assert.ok(Math.hypot(cell.x, cell.z) < 10, 'near the middle of the map, where it can be seen');
 });
 
 test('the scene cannot change mid-movement; reset restores the current scene', () => {

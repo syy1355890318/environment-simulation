@@ -1,46 +1,236 @@
-import {createDeliveryModel,samePosition} from './model.js';
+import {createDeliveryModel} from './model.js';
 import {createWorld} from './scene.js';
-import {createLocationExplorer} from './location-ui.js';
-import {createSpatialSystem} from './behaviors.js';
-import {createSpatialLab} from './spatial-ui.js';
-let model=createDeliveryModel(),state=model.state,selectedId='S1',world,explorer,lab;
-const spatial=createSpatialSystem(()=>model);spatial.loadScene('street');
-const $=id=>document.getElementById(id),coords=p=>`(${p.x.toFixed(1)}, ${p.z.toFixed(1)}) m`,escape=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-function render(){
- const r=state.robot,p=state.package,moving=r.motionState==='moving',selected=state.segments.find(s=>s.id===selectedId),passable=!selected.blocked&&selected.clearWidth>r.width;
- $('pickup-coordinates').textContent=coords(p.pickup);$('destination-coordinates').textContent=coords(p.destination);$('delivery-status').textContent=p.deliveryStatus==='in transit'?'In transit':p.deliveryStatus==='delivered'?'Delivered':'Waiting';$('delivery-status').className='status-badge '+(p.deliveryStatus==='in transit'?'transit':p.deliveryStatus==='delivered'?'delivered':'');$('motion-state').textContent=r.motionState.toUpperCase();$('motion-state').className='state-pill '+r.motionState;$('robot-state').textContent=moving?'On the move':r.motionState==='waiting'?'Standing by':samePosition(r.position,p.pickup)?'Idle at pickup':samePosition(r.position,p.destination)?'At destination':'Ready for next segment';$('robot-position').textContent=coords(r.position);$('carrying').textContent=r.carryingId||'No package';$('traversing').textContent=r.traversingId||'No segment';$('package-status').textContent=$('delivery-status').textContent;$('package-carried-by').textContent=p.carriedBy||'No robot';$('progress-text').textContent=`${state.nextIndex} / 4 segments`;$('progress-fill').style.width=(state.nextIndex/4*100)+'%';$('distance').textContent=state.distance.toFixed(1)+' m traveled';
- $('segment-list').innerHTML=state.segments.map((s,i)=>`<button class="segment-row ${s.id===selectedId?'selected':''} ${i<state.nextIndex?'complete':''} ${r.traversingId===s.id?'active':''} ${s.blocked||s.clearWidth<=r.width?'warning':''}" data-segment="${s.id}" aria-label="Inspect ${s.id}: ${s.name}"><span class="segment-index">${i<state.nextIndex?'✓':s.id}</span><span><span class="segment-name">${s.name}</span><span class="segment-sub">${Math.hypot(s.end.x-s.start.x,s.end.z-s.start.z)} m · ${s.clearWidth.toFixed(1)} m clear</span></span><span class="segment-indicator">${s.blocked?'⊘':s.clearWidth<=r.width?'!':i<state.nextIndex?'✓':i===state.nextIndex?'•':'·'}</span></button>`).join('');
- $('selected-id').textContent=selected.id;$('selected-name').textContent=selected.name;$('path-start').textContent=coords(selected.start);$('path-end').textContent=coords(selected.end);$('path-passable').textContent=selected.blocked?'Blocked':passable?'Passable':'Too narrow';$('path-passable').className='passable-label '+(!passable?'warning':'');$('path-width').value=selected.clearWidth;$('path-blocked').checked=selected.blocked;$('clearance-fill').style.width=Math.min(selected.clearWidth/3*100,100)+'%';$('robot-width-marker').style.left=Math.min(r.width/3*100,100)+'%';$('width-reference').textContent=r.width.toFixed(1)+' m';$('path-width').disabled=$('path-blocked').disabled=moving;
- $('robot-width').value=r.width;$('robot-capacity').value=r.payloadCapacity;$('package-weight').value=p.weight;['robot-width','robot-capacity','package-weight'].forEach(id=>$(id).disabled=moving||p.deliveryStatus!=='waiting');
- $('pickup').disabled=moving||p.deliveryStatus!=='waiting';$('move').disabled=moving||!r.carryingId||state.nextIndex>=state.segments.length;$('wait').disabled=moving||p.deliveryStatus==='delivered';$('deliver').disabled=moving||!r.carryingId||!samePosition(r.position,p.destination);$('reset').disabled=moving;
- $('pickup').classList.toggle('featured',p.deliveryStatus==='waiting');$('move').classList.toggle('active-action',!!r.carryingId&&state.nextIndex<4&&!moving);$('deliver').classList.toggle('featured',!!r.carryingId&&samePosition(r.position,p.destination));
- const next=state.segments[state.nextIndex];$('dock-title').textContent=moving?`Moving along ${r.traversingId}`:p.deliveryStatus==='delivered'?'Delivery complete':p.deliveryStatus==='waiting'?'Ready for pickup':samePosition(r.position,p.destination)?'Ready to deliver':r.motionState==='waiting'?'Robot is waiting':`Next: ${next.id} · ${next.name}`;$('dock-description').textContent=moving?'Movement is in progress. Actions resume on arrival.':p.deliveryStatus==='delivered'?'The package is at its destination. This cycle is complete.':p.deliveryStatus==='waiting'?'Collect the package to start your delivery.':samePosition(r.position,p.destination)?'Press Deliver, or place a recipient next to the robot.':r.motionState==='waiting'?'Check the next passage, then press Move to retry.':'Traverse the next connected path segment.';$('dock-step').textContent=`STEP ${String(Math.min(6,1+(p.deliveryStatus!=='waiting'?1:0)+state.nextIndex)).padStart(2,'0')} / 06`;$('dock-state-icon').textContent=p.deliveryStatus==='delivered'?'✓':moving?'▷':r.motionState==='waiting'?'Ⅱ':'◉';$('activity').textContent=state.history.at(-1).message;$('activity-count').textContent=state.history.length;world?.select(selectedId);
+import {createInspector} from './inspector.js';
+import {createSpatialSystem, OCCUPANT_TYPES} from './behaviors.js';
+import {nextStep} from './next-step.js';
+
+let model = createDeliveryModel(), state = model.state, world;
+const spatial = createSpatialSystem(() => model);
+spatial.loadScene('street');
+const $ = id => document.getElementById(id);
+const escape = text => String(text).replace(/[&<>"']/g, character => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[character]));
+
+let toastTimer, announced = state.history.length, nextKey = '';
+function notify(message) {
+  $('toast').textContent = message;
+  $('toast').classList.add('visible');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => $('toast').classList.remove('visible'), 2600);
 }
-explorer=createLocationExplorer(()=>state,()=>world);lab=createSpatialLab(spatial,{onChange:()=>render(),notify:message=>notify(message),onOpen:()=>explorer.close()});$('locations').addEventListener('click',()=>{if(explorer.isOpen())lab.close();});
-render();try{world=createWorld($('scene'),()=>state,id=>{selectedId=id;render();if(innerWidth<=800&&!explorer.isOpen())openPathDialog();},selection=>explorer.pick(selection),{snapshot:spatial.snapshot,occupants:spatial.occupants,placementProblem:spatial.placementProblem,drop:(id,position)=>{try{spatial.place(id,position);lab.forceRoster();render();}catch(error){notify(error.message);}}});}catch(e){$('scene').innerHTML='<div class="error-overlay">The 3D view needs WebGL. Enable hardware acceleration or try another browser. Delivery controls are still available.</div>';}
-let previous=performance.now(),lastUI=0,lastPanel=0;function frame(now){const elapsed=now-previous;previous=now;if(state.movement){const before=state.nextIndex;model.advance(elapsed*spatial.speedFactor());if(before!==state.nextIndex){selectedId=state.segments[state.nextIndex]?.id||'S4';render();}else if(now-lastUI>70){$('robot-position').textContent=coords(state.robot.position);$('progress-fill').style.width=((state.nextIndex+state.movement.progress)/4*100)+'%';$('distance').textContent=(state.distance+state.movement.length*state.movement.progress).toFixed(1)+' m traveled';lastUI=now;}}if(spatial.tick(elapsed).changed)render();if(now-lastPanel>120){lab.refresh();lastPanel=now;}world?.render();requestAnimationFrame(frame);}requestAnimationFrame(frame);
-let toastTimer;function notify(message){$('toast').textContent=message;$('toast').classList.add('visible');clearTimeout(toastTimer);toastTimer=setTimeout(()=>$('toast').classList.remove('visible'),3000);}
-function act(name){try{const result=name==='move'?model.move(spatial.obstruction()):model[name]();if(name==='move')selectedId=state.segments[state.nextIndex]?.id||'S4';render();notify(result.message);return result;}catch(error){notify(error.message);throw error;}}
-for(const action of['pickup','move','wait','deliver'])$(action).onclick=()=>{try{act(action);}catch{}};
-function selectSegment(id){selectedId=id;render();if(innerWidth<=800)openPathDialog();}
-$('segment-list').addEventListener('click',e=>{const button=e.target.closest('[data-segment]');if(button)selectSegment(button.dataset.segment);});
-function updatePath(changes){try{const result=model.updateSegment(selectedId,changes);render();notify(result.message);return result;}catch(error){render();notify(error.message);throw error;}}
-$('path-width').onchange=()=>{try{updatePath({clearWidth:Number($('path-width').value)});}catch{}};$('path-blocked').onchange=()=>{try{updatePath({blocked:$('path-blocked').checked});}catch{}};
-for(const[id,key]of[['robot-width','width'],['robot-capacity','payloadCapacity'],['package-weight','weight']])$(id).onchange=()=>{try{model.updateSpecs({[key]:Number($(id).value)});render();notify('Specifications updated.');}catch(error){render();notify(error.message);}};
-$('reset').onclick=()=>{if(state.movement){notify('Finish movement before resetting the delivery cycle.');return;}model=createDeliveryModel();state=model.state;selectedId='S1';explorer.reset();spatial.reset();lab.forceRoster();render();notify('A new delivery cycle is ready.');};
-$('zoom-out').onclick=()=>world?.zoom(-.12);$('zoom-in').onclick=()=>world?.zoom(.12);$('view-reset').onclick=()=>world?.resetView();$('view-top').onclick=()=>world?.toggleTop();
-function showDialog(html){$('dialog-content').innerHTML=html;if(!$('info-dialog').open)$('info-dialog').showModal();}
-$('close-dialog').onclick=()=>$('info-dialog').close();$('info-dialog').addEventListener('click',e=>{if(e.target!==$('info-dialog'))return;const rect=e.target.getBoundingClientRect();if(e.clientX<rect.left||e.clientX>rect.right||e.clientY<rect.top||e.clientY>rect.bottom)e.target.close();});
-$('rules').onclick=()=>showDialog(`<h2>Every delivery has its rules.</h2><p>One robot, one package, and a directed route through connected path segments. Coordinates use the horizontal x and z axes, in meters.</p><div class="relations">Robot ↔ zero or one package<br>Robot ↔ zero or one active path segment<br>Segment end = next segment start</div><ol class="rules-list"><li>Weight, robot width, and capacity must be <strong>greater than zero</strong>. Clear width can be zero.</li><li>Pickup requires the robot at the pickup, an empty robot, a waiting package, and <strong>weight ≤ capacity</strong>.</li><li>Move requires carrying the package and being at the next segment’s start. Movement follows the segment continuously.</li><li>A segment must be unblocked and <strong>clear width &gt; robot width</strong>. Equality is too narrow.</li><li>A blocked or narrow next segment makes the robot <strong>wait in place</strong>. Restore the passage and press Move again; no automatic rerouting.</li><li>Only stationary robots can begin actions. Movement cannot be interrupted.</li><li>With no recipient adjacent, reaching the destination does not deliver: <strong>press Deliver</strong> while carrying the package there. A recipient adjacent to the robot at the destination takes the handoff automatically.</li><li>Two objects are <strong>adjacent</strong> when no occupiable grid cell lies between them, so a building can make them adjacent. A person or cone on the next segment, or a crowd of three or more over it, makes the robot wait. A cone adjacent to the robot slows it.</li><li>A package is in transit exactly while carried, including during waits. A delivered package cannot be picked up again in the same cycle.</li></ol><p>Edit path conditions while stationary. Robot and package specifications can be edited before pickup. Reset begins a new cycle after movement finishes.</p>`);
-$('activity-button').onclick=()=>showDialog(`<h2>The delivery, step by step.</h2><ul class="activity-list">${[...state.history].reverse().map((e,i)=>`<li class="${e.kind}"><small>${String(state.history.length-i).padStart(2,'0')} · </small>${escape(e.message)}</li>`).join('')}</ul>`);
-function openPathDialog(){const s=state.segments.find(s=>s.id===selectedId),moving=!!state.movement;showDialog(`<h2>${s.id} · ${s.name}</h2><p>Start ${coords(s.start)}<br>End ${coords(s.end)}<br>Robot width: ${state.robot.width} m. Passage must be wider.</p><form id="mobile-path-form"><label class="width-label" for="mobile-width">Clear width (m)</label><div class="width-control"><input id="mobile-width" type="number" min="0" step="0.1" value="${s.clearWidth}" ${moving?'disabled':''}></div><label class="mobile-check"><input id="mobile-blocked" type="checkbox" ${s.blocked?'checked':''} ${moving?'disabled':''}> Blocked</label><button class="outline-button dialog-save" type="submit" ${moving?'disabled':''}>Apply passage conditions</button><p id="dialog-error" role="status"></p></form>`);$('mobile-path-form').onsubmit=e=>{e.preventDefault();try{updatePath({clearWidth:Number($('mobile-width').value),blocked:$('mobile-blocked').checked});$('info-dialog').close();}catch(error){$('dialog-error').textContent=error.message;}};}
-const detailsButton=document.createElement('button');detailsButton.className='mobile-details-button';detailsButton.textContent='Robot & package details';detailsButton.id='mobile-details';document.body.append(detailsButton);detailsButton.onclick=()=>{const r=state.robot,p=state.package,editable=!state.movement&&p.deliveryStatus==='waiting';showDialog(`<h2>Your delivery entities.</h2><p><strong>Robot ${r.id}</strong><br>Position ${coords(r.position)}<br>Motion state: ${r.motionState}<br>Carrying: ${r.carryingId||'none'}<br>Traversing: ${r.traversingId||'none'}</p><form id="mobile-spec-form"><label>Robot width (m)<input name="width" type="number" min="0.01" step="0.1" value="${r.width}" ${editable?'':'disabled'}></label><label>Payload capacity (kg)<input name="payloadCapacity" type="number" min="0.01" step="0.1" value="${r.payloadCapacity}" ${editable?'':'disabled'}></label><p><strong>Package ${p.id}</strong><br>Pickup ${coords(p.pickup)}<br>Destination ${coords(p.destination)}<br>Status: ${p.deliveryStatus}<br>Carried by: ${p.carriedBy||'none'}</p><label>Package weight (kg)<input name="weight" type="number" min="0.01" step="0.1" value="${p.weight}" ${editable?'':'disabled'}></label><button class="outline-button dialog-save" type="submit" ${editable?'':'disabled'}>Apply specifications</button><p id="dialog-error" role="status"></p></form>`);$('mobile-spec-form').onsubmit=e=>{e.preventDefault();const data=new FormData(e.target);try{model.updateSpecs({width:Number(data.get('width')),payloadCapacity:Number(data.get('payloadCapacity')),weight:Number(data.get('weight'))});render();$('info-dialog').close();notify('Specifications updated.');}catch(error){$('dialog-error').textContent=error.message;}};};
-document.addEventListener('keydown',e=>{if($('info-dialog').open||['INPUT','SELECT','TEXTAREA'].includes(document.activeElement.tagName))return;const action={'1':'pickup','2':'move','3':'wait','4':'deliver'}[e.key];if(action){e.preventDefault();try{act(action);}catch{}}});
-if(document.modelContext?.registerTool){
- const lifecycle=new AbortController();window.addEventListener('pagehide',()=>lifecycle.abort(),{once:true});
- const entries=[
- {name:'read_delivery',description:'Read robot, package, segments, carrying relationship, traversal, and delivery progress.',props:{},required:[],readOnly:true,run:()=>structuredClone(state)},
- ...['pickup','move','wait','deliver'].map(name=>({name:name==='pickup'?'pick_up_package':name==='move'?'move_robot':name==='wait'?'wait_robot':'deliver_package',description:{pickup:'Pick up the waiting package at its pickup position within capacity.',move:'Begin continuous traversal of the next segment, or wait if blocked or too narrow.',wait:'Wait at the current stationary position, retaining any package.',deliver:'Complete delivery at the destination and detach the carried package.'}[name],props:{},required:[],run:()=>act(name)})),
- {name:'update_path_segment',description:'While stationary, set an existing segment’s blocked flag or nonnegative clear width. Does not automatically move the robot.',props:{segmentId:{type:'string',enum:['S1','S2','S3','S4']},blocked:{type:'boolean'},clearWidth:{type:'number',minimum:0}},required:['segmentId'],run:input=>{if(!('blocked'in input)&&!('clearWidth'in input))throw new Error('Supply a blockage or clear width change.');const changes={};if('blocked'in input)changes.blocked=input.blocked;if('clearWidth'in input)changes.clearWidth=input.clearWidth;const result=model.updateSegment(input.segmentId,changes);selectedId=input.segmentId;render();return result;}}
- ];for(const entry of entries){try{Promise.resolve(document.modelContext.registerTool({name:entry.name,description:entry.description,inputSchema:{type:'object',properties:entry.props,required:entry.required,additionalProperties:false},annotations:{readOnlyHint:!!entry.readOnly,untrustedContentHint:false},execute:input=>{if(!input||typeof input!=='object'||Object.keys(input).some(k=>!(k in entry.props))||entry.required.some(k=>!(k in input)))throw new Error('Invalid action parameters.');return entry.run(input);}},{signal:lifecycle.signal})).catch(()=>{});}catch{}}
+
+const inspector = createInspector({getModel: () => model, getWorld: () => world, spatial, notify, onChange: () => render()});
+
+function renderNext() {
+  const step = nextStep(state, spatial.obstruction());
+  const fills = state.segments.map((_, index) => {
+    const fill = index < state.nextIndex ? 1 : index === state.nextIndex && state.movement ? state.movement.progress : 0;
+    return `<i><b style="width:${Math.round(fill * 100)}%"></b></i>`;
+  }).join('');
+  if ($('progress').dataset.fills !== fills) { $('progress').innerHTML = fills; $('progress').dataset.fills = fills; }
+  const key = JSON.stringify([step.text, step.label, step.canWait, step.warning]);
+  if (key === nextKey) return;
+  nextKey = key;
+  $('next-text').textContent = step.text;
+  $('next-action').hidden = !step.action;
+  $('next-action').textContent = step.label || '';
+  $('wait').hidden = !step.canWait;
+  document.querySelector('.next').classList.toggle('warning', !!step.warning);
+  $('progress').setAttribute('aria-label', `${state.nextIndex} of ${state.segments.length} segments done`);
+}
+
+function render() {
+  renderNext();
+  if (state.history.length !== announced) {
+    announced = state.history.length;
+    notify(state.history.at(-1).message);
+  }
+  inspector.refresh();
+}
+
+function act(name) {
+  try {
+    const result = name === 'move' ? model.move(spatial.obstruction()) : model[name]();
+    announced = state.history.length;
+    render();
+    notify(result.message);
+    return result;
+  } catch (error) {
+    notify(error.message);
+    throw error;
+  }
+}
+
+function reset() {
+  if (state.movement) { notify('Finish the current movement first.'); return; }
+  model = createDeliveryModel();
+  state = model.state;
+  announced = state.history.length;
+  spatial.reset();
+  inspector.hide();
+  nextKey = '';
+  render();
+}
+
+$('next-action').onclick = () => {
+  const {action} = nextStep(state, spatial.obstruction());
+  if (action === 'reset') reset();
+  else if (action) { try { act(action); } catch {} }
+};
+$('wait').onclick = () => { try { act('wait'); } catch {} };
+
+$('scene-select').innerHTML = spatial.SCENES.map(scene => `<option value="${scene.id}">${escape(scene.name)}</option>`).join('');
+$('scene-select').value = spatial.sceneId();
+$('scene-select').onchange = () => {
+  try {
+    const scene = spatial.loadScene($('scene-select').value);
+    inspector.hide();
+    render();
+    notify(scene.description);
+  } catch (error) {
+    $('scene-select').value = spatial.sceneId();
+    notify(error.message);
+  }
+  $('scene-select').blur();
+};
+
+const menus = [['add-button', 'add-menu'], ['more-button', 'more-menu']];
+function closeMenus() {
+  for (const [button, menu] of menus) { $(menu).hidden = true; $(button).setAttribute('aria-expanded', 'false'); }
+  $('find-results').hidden = true;
+}
+for (const [button, menu] of menus) $(button).onclick = event => {
+  event.stopPropagation();
+  const opening = $(menu).hidden;
+  closeMenus();
+  $(menu).hidden = !opening;
+  $(button).setAttribute('aria-expanded', String(opening));
+};
+document.addEventListener('click', event => { if (!event.target.closest('.menu')) closeMenus(); });
+
+$('add-menu').innerHTML = Object.entries(OCCUPANT_TYPES).map(([type, item]) => `<button data-add="${type}">${item.label}</button>`).join('');
+$('add-menu').onclick = event => {
+  const type = event.target.closest('[data-add]')?.dataset.add;
+  if (!type) return;
+  closeMenus();
+  try {
+    const occupant = spatial.add(type, spatial.firstOpenCell());
+    inspector.show({kind: 'object', id: occupant.id});
+    render();
+  } catch (error) { notify(error.message); }
+};
+
+function showFindMessage(result) {
+  $('find-results').innerHTML = `<p>${escape(result.message)}</p>` +
+    (result.candidates || []).map((item, index) => `<button type="button" data-candidate="${index}">${escape(item.name)}</button>`).join('');
+  $('find-results').hidden = false;
+  $('find-results').onclick = event => {
+    event.stopPropagation();
+    const button = event.target.closest('[data-candidate]');
+    if (!button) return;
+    inspector.showResult(result.candidates[Number(button.dataset.candidate)]);
+    closeMenus();
+  };
+}
+$('find').onsubmit = event => {
+  event.preventDefault();
+  event.stopPropagation();
+  closeMenus();
+  try {
+    const result = inspector.find($('find-input').value);
+    if (result.kind === 'found') $('find-input').blur();
+    else showFindMessage(result);
+  } catch (error) { notify(error.message); }
+};
+
+function select(id) { inspector.toggleObject(id); }
+function pickGround(selection) {
+  if (inspector.isOpen()) inspector.hide();
+  else inspector.show({kind: 'place', result: {kind: 'point', name: 'Location', position: selection.position}});
+}
+try {
+  world = createWorld($('scene'), () => state, select, pickGround, {
+    snapshot: spatial.snapshot,
+    occupants: spatial.occupants,
+    placementProblem: spatial.placementProblem,
+    click: select,
+    drop(id, position) {
+      try { spatial.place(id, position); render(); } catch (error) { notify(error.message); }
+    }
+  });
+} catch {
+  $('scene').innerHTML = '<div class="error-overlay">The 3D view needs WebGL. Turn on hardware acceleration or try another browser.</div>';
+}
+render();
+
+let previous = performance.now(), lastUI = 0;
+function frame(now) {
+  const elapsed = now - previous;
+  previous = now;
+  if (state.movement) model.advance(elapsed * spatial.speedFactor());
+  const {changed} = spatial.tick(elapsed);
+  if (changed || now - lastUI > 100) { render(); lastUI = now; }
+  world?.render();
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+
+$('reset').onclick = () => { closeMenus(); reset(); };
+$('zoom-out').onclick = () => world?.zoom(-.12);
+$('zoom-in').onclick = () => world?.zoom(.12);
+$('view-reset').onclick = () => world?.resetView();
+$('view-top').onclick = () => world?.toggleTop();
+
+function showDialog(html) {
+  closeMenus();
+  $('dialog-content').innerHTML = html;
+  if (!$('info-dialog').open) $('info-dialog').showModal();
+}
+$('close-dialog').onclick = () => $('info-dialog').close();
+$('info-dialog').addEventListener('click', event => { if (event.target === $('info-dialog')) $('info-dialog').close(); });
+$('rules').onclick = () => showDialog(`<h2>How it works</h2><ol class="rules-list">
+  <li>Pick up the package, move along the route one segment at a time, then deliver. Keys <strong>1–4</strong> are pick up, move, wait, and deliver.</li>
+  <li>A segment must be open and <strong>wider than the robot</strong>. If not, the robot waits; fix it and press Move again.</li>
+  <li><strong>Adjacent</strong> means no open grid cell between two objects, so a building can make them adjacent.</li>
+  <li><strong>Between</strong> means on the straight line joining two others. <strong>Among</strong> means inside the outline of three or more others.</li>
+  <li>A person or cone on the next segment, or a crowd of three or more over it, makes the robot wait.</li>
+  <li>A <strong>cone</strong> next to the robot slows it. A <strong>recipient</strong> next to the robot at the destination takes the package automatically; otherwise press Deliver.</li>
+  <li>Click anything on the map to inspect or edit it. Drag people and cones to move them. Drag the ground to orbit.</li>
+</ol>`);
+$('activity-button').onclick = () => showDialog(`<h2>Activity</h2><ul class="activity-list">${[...state.history].reverse().map(entry => `<li class="${entry.kind}">${escape(entry.message)}</li>`).join('')}</ul>`);
+
+document.addEventListener('keydown', event => {
+  if (event.key === 'Escape') { closeMenus(); if (!$('info-dialog').open) inspector.hide(); return; }
+  if ($('info-dialog').open || ['INPUT', 'SELECT', 'TEXTAREA'].includes(document.activeElement.tagName)) return;
+  const action = {'1': 'pickup', '2': 'move', '3': 'wait', '4': 'deliver'}[event.key];
+  if (action) { event.preventDefault(); try { act(action); } catch {} }
+});
+
+if (document.modelContext?.registerTool) {
+  const lifecycle = new AbortController();
+  window.addEventListener('pagehide', () => lifecycle.abort(), {once: true});
+  const entries = [
+    {name: 'read_delivery', description: 'Read robot, package, segments, carrying relationship, traversal, and delivery progress.', props: {}, required: [], readOnly: true, run: () => structuredClone(state)},
+    ...['pickup', 'move', 'wait', 'deliver'].map(name => ({
+      name: {pickup: 'pick_up_package', move: 'move_robot', wait: 'wait_robot', deliver: 'deliver_package'}[name],
+      description: {pickup: 'Pick up the waiting package at its pickup position within capacity.', move: 'Begin continuous traversal of the next segment, or wait if blocked or too narrow.', wait: 'Wait at the current stationary position, retaining any package.', deliver: 'Complete delivery at the destination and detach the carried package.'}[name],
+      props: {}, required: [], run: () => act(name)
+    })),
+    {name: 'update_path_segment', description: 'While stationary, set an existing segment’s blocked flag or nonnegative clear width. Does not automatically move the robot.', props: {segmentId: {type: 'string', enum: ['S1', 'S2', 'S3', 'S4']}, blocked: {type: 'boolean'}, clearWidth: {type: 'number', minimum: 0}}, required: ['segmentId'], run: input => {
+      if (!('blocked' in input) && !('clearWidth' in input)) throw new Error('Supply a blockage or clear width change.');
+      const changes = {};
+      if ('blocked' in input) changes.blocked = input.blocked;
+      if ('clearWidth' in input) changes.clearWidth = input.clearWidth;
+      const result = model.updateSegment(input.segmentId, changes);
+      render();
+      return result;
+    }}
+  ];
+  for (const entry of entries) {
+    try {
+      Promise.resolve(document.modelContext.registerTool({name: entry.name, description: entry.description, inputSchema: {type: 'object', properties: entry.props, required: entry.required, additionalProperties: false}, annotations: {readOnlyHint: !!entry.readOnly, untrustedContentHint: false}, execute: input => {
+        if (!input || typeof input !== 'object' || Object.keys(input).some(key => !(key in entry.props)) || entry.required.some(key => !(key in input))) throw new Error('Invalid action parameters.');
+        return entry.run(input);
+      }}, {signal: lifecycle.signal})).catch(() => {});
+    } catch {}
+  }
 }

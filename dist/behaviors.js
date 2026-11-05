@@ -98,11 +98,12 @@ export function createSpatialSystem(getModel) {
   }
 
   function firstOpenCell() {
-    for (let row = 9; row >= -9; row--) for (let col = -11; col <= 11; col++) {
-      const position = cellCenter({col, row});
-      if (!placementProblem(null, position) && !state().segments.some(s => distanceToSegment(position, s.start, s.end) < ON_PATH)) return position;
-    }
-    throw new Error('No open location remains.');
+    const cells = [];
+    for (let row = -9; row <= 9; row++) for (let col = -11; col <= 11; col++) cells.push(cellCenter({col, row}));
+    cells.sort((a, b) => Math.hypot(a.x, a.z) - Math.hypot(b.x, b.z));
+    const open = cells.find(position => !placementProblem(null, position) && !state().segments.some(s => distanceToSegment(position, s.start, s.end) < ON_PATH));
+    if (!open) throw new Error('No open location remains.');
+    return open;
   }
 
   function place(id, position) {

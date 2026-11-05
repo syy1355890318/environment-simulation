@@ -28,6 +28,12 @@ export function fromFrame(state, position, frame = 'world') {
   return {x: p.x + state.package.pickup.x, z: p.z + state.package.pickup.z};
 }
 
+// Typed coordinates such as "-2, 2" or "(10, -4) m". Anything else is not coordinates.
+export function parseCoordinates(text) {
+  const match = String(text).replace(/−/g, '-').match(/^\s*\(?\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*\)?\s*(?:m|meters|metres)?\s*$/i);
+  return match ? {x: Number(match[1]), z: Number(match[2])} : null;
+}
+
 export function getLandmarks(state) {
   const segments = state.segments;
   const landmarks = [{id: 'pickup', name: 'Market Street pickup',

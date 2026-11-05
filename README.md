@@ -18,33 +18,21 @@ Wait for **Deploy Robot Delivery to GitHub Pages** to finish in the **Actions** 
 
 ## Operate
 
-1. **Pick up** the waiting package at the pickup position.
-2. **Move** through the next connected segment. Positions update continuously and actions remain unavailable during traversal.
-3. **Wait** at the current position while retaining any package.
-4. After the final segment, press **Deliver** to complete the handoff. Arrival does not automatically deliver unless a recipient is adjacent; see [Spatial Lab](#spatial-lab-position--movement).
+The bar at the bottom always shows the next step and one button: **Pick up**, **Move**, **Deliver**, or **Start over**. The pause button waits in place. Keys 1–4 are pick up, move, wait, and deliver.
 
-Keyboard shortcuts 1–4 correspond to the four actions. Drag to orbit, scroll to zoom, and use the view controls to reset the camera or switch to overhead view.
+Click anything on the map to open its card: the robot and package for their specifications, a path to change its clear width or block it, a person or cone to place or remove it, or empty ground to see what is there. Click empty ground or press Escape to close the card. Drag people and cones to move them, and drag the ground to orbit.
 
-Select a path segment in the inspector or 3D scene. While stationary, change its blocked flag or clear width. Blocked and too-narrow movement attempts leave the robot in place and waiting. Clear width must be **strictly greater** than robot width; equal widths do not permit passage. Restore the passage, then press Move to retry. The robot never automatically chooses another route.
+Blocked and too-narrow moves leave the robot waiting in place. Clear width must be **strictly greater** than robot width. Restore the passage, then press Move again; the robot never reroutes itself. Package weight, robot width, and capacity are editable before pickup. State is in memory and resets on reload. **Reset** and the activity log are in the ⋯ menu.
 
-Package weight, robot width, and payload capacity are editable before pickup. Weight equal to capacity is valid. Values must be finite and greater than zero; segment clear width must be nonnegative. On compact screens, select a path row to edit conditions, or open **Robot & package details** for specifications.
+## Find
 
-**Reset simulation** begins a new cycle while stationary. The model’s original delivery cycle never permits a delivered package to be picked up again. State is in memory and resets when the page reloads. Decorative city geometry and entity markers are illustrative; the displayed numeric attributes govern passage rules.
+The search box takes `pickup`, `destination`, a junction, a path name, `halfway along Garden Passage`, `50% along S2`, `6 m along Garden Passage`, coordinates such as `-2, 2`, or an object such as `robot`, `PKG-001`, or `P-1`. Ambiguous terms list their candidates; unknown descriptions do not invent a location. East is `+x` and north is `−z`.
 
-## Location Explorer
+A place card lists who is within the search radius (default 0.5 m, boundary included). Under **Options**, measure from World or Pickup, and change the radius. World `(-2, -4)` is `(10, -12)` from pickup. Finding things never changes delivery state.
 
-Open **Location Explorer** in the toolbar. It offers two representations of the same ground-plane position: numeric `(x, z)` coordinates in meters and a named-place or route description. East is `+x`; north is `−z`.
+## Position and movement
 
-- **Object:** locate the robot, package, or any path segment. Robot and package queries follow movement live. Paths retain their complete start/end extent; their point marker is explicitly the midpoint.
-- **Occupants:** choose a landmark, enter coordinates, or use **Pick a location on the map**. Query robot and package within a nonnegative search radius (default 0.5 m, boundary included with 1e-7 m numerical tolerance). Both can occupy a point; co-location never implies carrying. Path context is listed separately.
-- **Describe:** resolve `pickup`, `destination`, named junctions, whole path names, `halfway along Garden Passage`, `50% along S2`, or `6 m along Garden Passage`. The Garden midpoint is `(-2, 2)` m. Ambiguous terms such as `junction` show explicit candidates; unknown descriptions do not invent a location.
-- **Reference frame:** switch between World and Relative to pickup. World `(-2, -4)` becomes `(10, -12)` relative to pickup, meaning 10 m east and 12 m north of pickup. Changing frames converts the same selected point rather than moving an entity.
-
-The blue marker and path highlights identify query results. Screen anchors are camera-derived CSS pixel coordinates relative to the page viewport and update during orbit, zoom, and resize. Map picking uses the same ground-plane transform. Querying locations never changes delivery state. Uncarried packages share their semantic x/z anchor with their scene position; vertical separation makes colocated entities visible and is illustrative.
-
-## Spatial Lab: Position + Movement
-
-Open **Spatial Lab** in the toolbar. Drag people and cones on the ground, type their coordinates, or load a scene: **Street**, **Relations**, **Crowd**, **Warning**, or **Movement**. Indicators appear in the 3D view and are listed in the panel. Drag empty ground to orbit.
+Choose a scene from the menu at the top: **Street**, **Relations**, **Crowd**, **Warning**, or **Movement**. Add people, recipients, and cones with **＋**. Indicators appear on the map as conditions are met.
 
 The ground is a grid of 2 m cells centered on even coordinates. A cell is occupiable unless it is off the map or inside a building. Moving objects are judged by the cell they currently occupy. A package being carried is not a separate object.
 
@@ -71,12 +59,12 @@ The ground is a grid of 2 m cells centered on even coordinates. A cell is occupi
 
 - `dist/model.js` owns the robot, package, route, bidirectional carrying relationship, traversal, and action validation.
 - `dist/locations.js` derives landmarks, descriptions, occupancy, reference frames, and description resolution from model state.
-- `dist/location-ui.js` and `dist/locations.css` provide the responsive Location Explorer.
+- `dist/inspector.js` renders the selection card and resolves searches. `dist/next-step.js` decides the single next step.
 - `dist/spatial.js` defines the occupiable grid and building footprints; `dist/relations.js` detects position relations and crowds; `dist/movement.js` reads movement from position history.
-- `dist/behaviors.js` holds occupants, scenes, and the responses to placement. `dist/spatial-overlay.js`, `dist/spatial-ui.js`, and `dist/spatial.css` draw the figures, indicators, and panel.
+- `dist/behaviors.js` holds occupants, scenes, and the responses to placement. `dist/spatial-overlay.js` draws the figures and indicators.
 - `dist/projection.js` shares the world-to-screen and screen-to-ground transforms.
 - `dist/scene.js` renders geometry, moving entities, route states, and camera controls.
-- `dist/app.js` connects the toolbar, live entity inspectors, activity log, responsive dialogs, and optional WebMCP browser actions to the same model.
+- `dist/app.js` connects the top bar, next-step bar, menus, dialogs, and optional WebMCP browser actions to the same model.
 - `dist/index.html` and `dist/style.css` define the accessible interface.
 
 Coordinates use the horizontal x and z axes, in meters. Movement only starts at a segment’s exact start, interpolates to its end, and clears traversal on arrival. The package is in transit exactly while carried, including during waits.
