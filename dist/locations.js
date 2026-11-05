@@ -81,6 +81,9 @@ export function objectLocation(state, id) {
     relation: state.robot.carryingId ? `Carrying ${state.robot.carryingId}` : 'Carrying no package', status: state.robot.motionState};
   if (id === state.package.id) return {kind: 'point', id, name: `Package ${id}`, position: copy(state.package.position),
     relation: state.package.carriedBy ? `Carried by ${state.package.carriedBy}` : 'Not carried', status: state.package.deliveryStatus};
+  const occupant = (state.occupants || []).find(item => item.id === id);
+  if (occupant) return {kind: 'point', id, name: `${occupant.type[0].toUpperCase()}${occupant.type.slice(1)} ${id}`, position: copy(occupant.position),
+    relation: occupant.walk ? 'Walking' : 'Standing', status: occupant.type};
   const segment = state.segments.find(item => item.id === id);
   if (segment) return {kind: 'segment', id, name: segment.name, start: copy(segment.start), end: copy(segment.end),
     position: {x: (segment.start.x + segment.end.x) / 2, z: (segment.start.z + segment.end.z) / 2},
@@ -91,7 +94,7 @@ export function objectLocation(state, id) {
 export function occupantsAt(state, position, radius = 0.5) {
   const p = validPosition(position);
   if (!Number.isFinite(radius) || radius < 0) throw new Error('Search radius must be a finite number, zero or greater.');
-  return [state.robot.id, state.package.id].map(id => objectLocation(state, id))
+  return [state.robot.id, state.package.id, ...(state.occupants || []).map(item => item.id)].map(id => objectLocation(state, id))
     .map(object => ({...object, distance: distance(p, object.position)}))
     .filter(object => object.distance <= radius + EPSILON);
 }

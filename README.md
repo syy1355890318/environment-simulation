@@ -21,7 +21,7 @@ Wait for **Deploy Robot Delivery to GitHub Pages** to finish in the **Actions** 
 1. **Pick up** the waiting package at the pickup position.
 2. **Move** through the next connected segment. Positions update continuously and actions remain unavailable during traversal.
 3. **Wait** at the current position while retaining any package.
-4. After the final segment, press **Deliver** to complete the handoff. Arrival does not automatically deliver.
+4. After the final segment, press **Deliver** to complete the handoff. Arrival does not automatically deliver unless a recipient is adjacent; see [Spatial Lab](#spatial-lab-position--movement).
 
 Keyboard shortcuts 1–4 correspond to the four actions. Drag to orbit, scroll to zoom, and use the view controls to reset the camera or switch to overhead view.
 
@@ -42,11 +42,38 @@ Open **Location Explorer** in the toolbar. It offers two representations of the 
 
 The blue marker and path highlights identify query results. Screen anchors are camera-derived CSS pixel coordinates relative to the page viewport and update during orbit, zoom, and resize. Map picking uses the same ground-plane transform. Querying locations never changes delivery state. Uncarried packages share their semantic x/z anchor with their scene position; vertical separation makes colocated entities visible and is illustrative.
 
+## Spatial Lab: Position + Movement
+
+Open **Spatial Lab** in the toolbar. Drag people and cones on the ground, type their coordinates, or load a scene: **Street**, **Relations**, **Crowd**, **Warning**, or **Movement**. Indicators appear in the 3D view and are listed in the panel. Drag empty ground to orbit.
+
+The ground is a grid of 2 m cells centered on even coordinates. A cell is occupiable unless it is off the map or inside a building. Moving objects are judged by the cell they currently occupy. A package being carried is not a separate object.
+
+| Position | Condition | Indicator |
+|---|---|---|
+| **Adjacent** | Distinct cells with no occupiable cell between them. An occupied cell still counts as occupiable; a building cell does not, so two objects on either side of a building are adjacent. | Green bar and tinted cells, thicker across a building |
+| **Between** | The middle object's cell is on the straight line joining two others, within 14 m. | Blue line and a diamond on the middle object |
+| **Among** | Strictly inside the outline of at least three other objects, in distinct cells, within 6 m. | Purple outline and a ring on the center |
+
+| Movement | Condition | Indicator |
+|---|---|---|
+| **Toward / Away** | Distance to a referent shrinks or grows by at least 0.25 m/s. The nearest referent is shown. | Colored arrow, dotted trail, and label |
+| **Past** | Came within 4 m, reached the far side of the referent, and is receding. Turning back does not count. | Pin at the closest point with its distance |
+| **Into / Out of** | Crosses the boundary of the 3 m pickup or destination zone. | Zone ring pulses and a label |
+
+| Behavior | Trigger | Response |
+|---|---|---|
+| **Crowd** (placement) | Three or more people linked within two cells | A circle is drawn. If it covers the next segment, Move makes the robot wait. It does not reroute or retry on its own. |
+| **Occupied path** (placement) | An occupant stands on the next segment | Move makes the robot wait until the path is clear. |
+| **Warn** (capability) | A cone is adjacent to the robot | Pulsing ring, and the robot moves at 40% speed. |
+| **Receive** (capability) | A recipient is adjacent to the carrying robot at the destination | Automatic handoff. With no adjacent recipient, press **Deliver** as usual. |
+
 ## Implementation
 
 - `dist/model.js` owns the robot, package, route, bidirectional carrying relationship, traversal, and action validation.
 - `dist/locations.js` derives landmarks, descriptions, occupancy, reference frames, and description resolution from model state.
 - `dist/location-ui.js` and `dist/locations.css` provide the responsive Location Explorer.
+- `dist/spatial.js` defines the occupiable grid and building footprints; `dist/relations.js` detects position relations and crowds; `dist/movement.js` reads movement from position history.
+- `dist/behaviors.js` holds occupants, scenes, and the responses to placement. `dist/spatial-overlay.js`, `dist/spatial-ui.js`, and `dist/spatial.css` draw the figures, indicators, and panel.
 - `dist/projection.js` shares the world-to-screen and screen-to-ground transforms.
 - `dist/scene.js` renders geometry, moving entities, route states, and camera controls.
 - `dist/app.js` connects the toolbar, live entity inspectors, activity log, responsive dialogs, and optional WebMCP browser actions to the same model.
