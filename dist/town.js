@@ -4,7 +4,7 @@ import * as THREE from './vendor/three.module.js';
 import {SIZE, SIDEWALK, BLOCKS, PLACES, HINDRANCES} from './city.js';
 import {indexOf} from './nav.js';
 
-const INK = 0x141414, BLUE = 0x1f33c4, INK_CSS = '#141414', BLUE_CSS = '#1f33c4', PAPER_CSS = '#ffffff';
+const INK = 0x141414, BLUE = 0x1f33c4, INK_CSS = '#141414', BLUE_CSS = '#1f33c4', PAPER_CSS = '#ffffff', SEA_CSS = '#f6f6f7';
 const BAY = 3, CURB = .14;
 // Lots that hold something special, found by a point inside them.
 const SPECIAL_LOTS = {clock: {x: -40, z: -29}, greenhouse: {x: -37, z: 30}, depot: {x: 15, z: 30}, mural: {x: 40, z: 2}};
@@ -59,7 +59,7 @@ const FACADES = {
   },
   plain: (c, s) => { paper(c, s, s); pen(c, INK_CSS, 2); c.beginPath(); c.moveTo(0, s - 2); c.lineTo(s, s - 2); c.stroke(); }
 };
-// Roof patterns, each drawn in a foreground color on a background color.
+// Roof patterns: lines only, never filled.
 const ROOFS = {
   scales: (c, s, fg) => {
     pen(c, fg, 4);
@@ -82,7 +82,6 @@ const ROOFS = {
     for (let row = 0; row < 4; row++) for (let i = -1; i < 5; i++) {
       const x = i * step + (row % 2 ? step / 2 : 0), y = row * step;
       c.beginPath(); c.moveTo(x, y + step); c.lineTo(x + step / 2, y); c.lineTo(x + step, y + step); c.closePath(); c.stroke();
-      if ((i + row) % 2 === 0) { c.fillStyle = fg; c.fill(); }
     }
   },
   hatch: (c, s, fg) => {
@@ -145,56 +144,98 @@ export function buildTown(scene) {
 
   const white = standard({color: 0xffffff}), ink = standard({color: INK}), blue = standard({color: BLUE}), pale = standard({color: 0xededed});
   const facade = Object.fromEntries(Object.entries(FACADES).map(([name, draw]) => [name, standard({map: canvasTexture(256, 256, c => draw(c, 256))})]));
-  const roofMaterial = (name, isBlue) => standard({side: THREE.DoubleSide, map: canvasTexture(256, 256, c => {
-    paper(c, 256, 256, isBlue ? BLUE_CSS : PAPER_CSS);
-    ROOFS[name](c, 256, isBlue ? PAPER_CSS : INK_CSS);
+  const lined = (name, background, foreground) => standard({side: THREE.DoubleSide, map: canvasTexture(256, 256, c => {
+    paper(c, 256, 256, background);
+    ROOFS[name](c, 256, foreground);
   })});
-  const roofs = Object.keys(ROOFS).map(name => roofMaterial(name, false)), blueRoofs = ['scales', 'triangles'].map(name => roofMaterial(name, true));
+  const roofs = Object.keys(ROOFS).map(name => lined(name, PAPER_CSS, INK_CSS));
   const flatRoof = standard({color: 0xf2f2f2});
   const glass = standard({side: THREE.DoubleSide, transparent: true, opacity: .6, map: canvasTexture(128, 128, (c, s) => {
     paper(c, s, s, '#f6f8ff'); pen(c, INK_CSS, 5); c.strokeRect(0, 0, s, s);
   })});
+  // Foliage is blue with white linework.
   const leaf = {
     veins: standard({map: canvasTexture(256, 256, (c, s) => {
-      paper(c, s, s); pen(c, INK_CSS, 3);
+      paper(c, s, s, BLUE_CSS); pen(c, PAPER_CSS, 3);
       for (let i = -6; i <= 6; i++) { c.beginPath(); c.moveTo(s / 2, s); c.quadraticCurveTo(s / 2 + i * 6, s / 2, s / 2 + i * 22, 0); c.stroke(); }
     }, false)}),
     dots: standard({map: canvasTexture(256, 256, (c, s) => {
-      paper(c, s, s); pen(c, INK_CSS, 3);
+      paper(c, s, s, BLUE_CSS); pen(c, PAPER_CSS, 3);
       for (let y = 10; y < s; y += 22) for (let x = (y / 22 % 2) * 11 + 6; x < s; x += 22) { c.beginPath(); c.arc(x, y, 6, 0, Math.PI * 2); c.stroke(); }
-    })})
+    })}),
+    scales: lined('scales', BLUE_CSS, PAPER_CSS)
   };
 
   // --- Ground, sea, and pier ---
   const sea = standard({roughness: 1, map: canvasTexture(256, 256, (c, s) => {
-    paper(c, s, s, '#f7f7f8'); pen(c, 'rgba(31, 51, 196, .55)', 2);
-    for (let row = 0; row < 2; row++) for (let i = 0; i < 1; i++) {
-      const x = (row % 2 ? s / 2 : 0) + 30, y = row * s / 2 + 60;
-      c.beginPath(); c.moveTo(x, y); c.quadraticCurveTo(x + 18, y - 14, x + 36, y); c.quadraticCurveTo(x + 54, y + 14, x + 72, y); c.stroke();
+    paper(c, s, s, SEA_CSS); pen(c, BLUE_CSS, 2.5);
+    // Three staggered rows of double-crested waves, plus a few short ripples.
+    for (let row = 0; row < 3; row++) for (let i = 0; i < 2; i++) {
+      const x = i * s / 2 + (row % 2 ? s / 4 : 0) + 10, y = row * s / 3 + 34;
+      c.beginPath(); c.moveTo(x, y); c.quadraticCurveTo(x + 14, y - 13, x + 28, y); c.quadraticCurveTo(x + 42, y + 13, x + 56, y); c.quadraticCurveTo(x + 70, y - 13, x + 84, y); c.stroke();
     }
+    pen(c, BLUE_CSS, 2);
+    for (const [x, y] of [[100, 66], [20, 150], [200, 150], [120, 236]]) { c.beginPath(); c.moveTo(x, y); c.quadraticCurveTo(x + 9, y - 8, x + 18, y); c.stroke(); }
   })});
-  const REACH = 44;
-  for (const [w, d, x, z] of [[SIZE.x * 2 + REACH * 2, REACH, 0, -SIZE.z - REACH / 2], [REACH, SIZE.z * 2 + REACH, SIZE.x + REACH / 2, REACH / 2]]) {
-    const water = add(scene, new THREE.PlaneGeometry(w, d).rotateX(-Math.PI / 2), sea, x, -.9, z, false);
-    const uv = water.geometry.attributes.uv;
-    for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * w / 12, uv.getY(i) * d / 12);
-  }
+  // The town is an island: water runs past every edge of the view.
+  const WATER = 760, WATER_Y = -.9;
+  const water = add(scene, new THREE.PlaneGeometry(WATER, WATER).rotateX(-Math.PI / 2), sea, 0, WATER_Y, 0, false);
+  for (let i = 0; i < water.geometry.attributes.uv.count; i++) water.geometry.attributes.uv.setXY(i, water.geometry.attributes.uv.getX(i) * WATER / 11, water.geometry.attributes.uv.getY(i) * WATER / 11);
+
   const pierZ = -SIZE.z - 7;
   outline(box(scene, 6, 1, 14, white, 28, -.5, pierZ));
   for (const z of [-3, 3]) for (const x of [-2.6, 2.6]) add(scene, new THREE.CylinderGeometry(.18, .18, .6, 8), ink, 28 + x, .3, pierZ - 3 + z * 1.2);
-  function boat(x, z, turn) {
+
+  const hullShape = new THREE.Shape([[-1.7, -.62], [.9, -.62], [2, 0], [.9, .62], [-1.7, .62]].map(([x, y]) => new THREE.Vector2(x, y)));
+  const hullGeometry = new THREE.ExtrudeGeometry(hullShape, {depth: .7, bevelEnabled: false}).rotateX(-Math.PI / 2);
+  const cloth = standard({color: 0xffffff, side: THREE.DoubleSide}), blueCloth = standard({color: BLUE, side: THREE.DoubleSide});
+  const sailStripes = standard({side: THREE.DoubleSide, map: canvasTexture(64, 64, (c, s) => {
+    paper(c, s, s); c.fillStyle = BLUE_CSS;
+    for (let y = 8; y < s; y += 22) c.fillRect(0, y, s, 8);
+  })});
+  function sail(parent, points, material) {
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute('position', new THREE.Float32BufferAttribute(points.flat(), 3));
+    geometry.setAttribute('uv', new THREE.Float32BufferAttribute(points.flatMap(([x, y]) => [x / 2, y / 2]), 2));
+    geometry.computeVertexNormals();
+    const mesh = add(parent, geometry, material, 0, 0, 0);
+    mesh.add(new THREE.LineLoop(geometry, edge));
+    return mesh;
+  }
+  function boat(x, z, turn, kind) {
     const group = new THREE.Group();
-    group.position.set(x, -.75, z);
+    group.position.set(x, WATER_Y, z);
     group.rotation.y = turn;
-    outline(box(group, 3.2, .7, 1.2, white, 0, .2, 0));
-    add(group, new THREE.CylinderGeometry(.05, .05, 3, 6), ink, 0, 1.9, 0);
-    const sail = new THREE.BufferGeometry();
-    sail.setAttribute('position', new THREE.Float32BufferAttribute([.1, .7, 0, 1.5, .7, 0, .1, 3.2, 0], 3));
-    sail.computeVertexNormals();
-    add(group, sail, standard({color: BLUE, side: THREE.DoubleSide}), 0, 0, 0);
+    outline(add(group, hullGeometry, white, 0, -.15, 0));
+    box(group, 3.3, .1, 1.3, blue, -.2, .36, 0, false);
+    // A wake of two short lines behind the stern.
+    for (const side of [-.5, .5]) box(group, 1.6, .02, .05, blue, -2.9, .04, side, false);
+    if (kind === 'sail') {
+      add(group, new THREE.CylinderGeometry(.05, .06, 4.2, 6), ink, .2, 2.6, 0);
+      box(group, 2.1, .06, .06, ink, -.85, 1.1, 0);
+      sail(group, [[.1, 1.15, 0], [-1.9, 1.15, 0], [.1, 4.5, 0]], sailStripes);
+      sail(group, [[.3, .9, 0], [1.85, .9, 0], [.3, 3.9, 0]], cloth);
+      sail(group, [[.2, 4.7, 0], [-.6, 4.5, 0], [.2, 4.3, 0]], blueCloth);
+      outline(box(group, .8, .35, .7, white, -1, .72, 0));
+    } else {
+      // A fishing boat: wheelhouse, funnel, crates, and a short mast with a flag.
+      outline(box(group, 1.1, .9, .95, white, -.6, 1, 0));
+      box(group, .04, .34, .6, ink, -.04, 1.12, 0, false);
+      outline(box(group, 1.3, .1, 1.1, white, -.6, 1.5, 0));
+      add(group, new THREE.CylinderGeometry(.14, .16, .7, 10), blue, -.9, 1.9, 0);
+      outline(box(group, .45, .35, .45, white, .7, .73, .2));
+      outline(box(group, .4, .3, .4, blue, 1.15, .7, -.2));
+      add(group, new THREE.CylinderGeometry(.03, .03, 1.6, 5), ink, .35, 1.35, 0);
+      sail(group, [[.37, 2.15, 0], [1, 2, 0], [.37, 1.85, 0]], blueCloth);
+    }
     scene.add(group);
   }
-  boat(36, -SIZE.z - 9, .4); boat(12, -SIZE.z - 14, -.3); boat(SIZE.x + 10, -8, 1.2);
+  // Boats on every side of the island.
+  [[36, -SIZE.z - 9, .4, 'sail'], [12, -SIZE.z - 15, -.3, 'fish'], [-24, -SIZE.z - 11, 2.8, 'sail'], [-44, -SIZE.z - 20, .9, 'fish'],
+    [SIZE.x + 10, -10, 1.2, 'sail'], [SIZE.x + 19, 18, -1.9, 'fish'], [SIZE.x + 8, 40, 2.2, 'sail'],
+    [20, SIZE.z + 12, 3.4, 'sail'], [-12, SIZE.z + 8, .2, 'fish'], [-38, SIZE.z + 16, -.6, 'sail'],
+    [-SIZE.x - 11, 14, -1.3, 'sail'], [-SIZE.x - 18, -14, 1.7, 'fish'], [-SIZE.x - 8, -30, .5, 'sail']]
+    .forEach(([bx, bz, turn, kind]) => boat(bx, bz, turn, kind));
 
   const buildings = [];
   const cellsIn = rect => {
@@ -228,13 +269,54 @@ export function buildTown(scene) {
     return outline(add(parent, geometry, [material, material, flatRoof, flatRoof, material, material], 0, y + h / 2, 0));
   }
 
+  // Five kinds of tree, each a trunk with a crown made of several parts.
   function tree(parent, x, z, kind, scale = 1) {
-    const height = (1.6 + (kind % 3) * .5) * scale;
-    add(parent, new THREE.CylinderGeometry(.07, .1, height, 6), ink, x, height / 2, z);
-    const crown = add(parent, new THREE.IcosahedronGeometry(1, 2), [leaf.dots, leaf.veins, blue, pale][kind % 4], x, height + .6 * scale, z);
-    crown.scale.set(...[[1, 1, 1], [1.1, 1.3, .4], [.8, .8, .8], [.6, 1.7, .6]][kind % 4].map(value => value * scale));
-    crown.rotation.y = (x * 7 + z * 3) % 3;
-    return crown;
+    const group = new THREE.Group();
+    group.position.set(x, 0, z);
+    group.rotation.y = Math.abs(x * 7 + z * 3) % 6;
+    group.scale.setScalar(scale);
+    parent.add(group);
+    const trunk = (height, radius = .08) => add(group, new THREE.CylinderGeometry(radius * .7, radius * 1.3, height, 6), blue, 0, height / 2, 0);
+    const ball = (radius, material, px, py, pz) => add(group, new THREE.IcosahedronGeometry(radius, 2), material, px, py, pz);
+    const branch = (length, lean, turn, base) => {
+      const limb = add(group, new THREE.CylinderGeometry(.03, .05, length, 5), blue, 0, 0, 0);
+      limb.rotation.set(0, turn, lean, 'YXZ');
+      limb.position.set(-Math.sin(lean) * Math.cos(turn) * length / 2, base + Math.cos(lean) * length / 2, Math.sin(lean) * Math.sin(turn) * length / 2);
+      return {x: -Math.sin(lean) * Math.cos(turn) * length, y: base + Math.cos(lean) * length, z: Math.sin(lean) * Math.sin(turn) * length};
+    };
+    switch (kind % 5) {
+      case 0: { // round crown with a smaller one on a side branch
+        trunk(2.3);
+        ball(.95, leaf.dots, 0, 3, 0);
+        const tip = branch(1, .9, 1, 1.3);
+        ball(.4, blue, tip.x, tip.y + .2, tip.z);
+        break;
+      }
+      case 1: { // a flat fan of a leaf, with veins
+        trunk(1.9);
+        ball(1, leaf.veins, 0, 3.1, 0).scale.set(1.25, 1.45, .32);
+        break;
+      }
+      case 2: { // conifer in three tiers
+        trunk(1);
+        [[1.05, 1.5], [.82, 2.3], [.58, 3.1]].forEach(([radius, y]) => add(group, new THREE.ConeGeometry(radius, 1.3, 12), leaf.scales, 0, y, 0));
+        break;
+      }
+      case 3: { // a cloud of several small crowns
+        trunk(2);
+        [[0, 2.7, 0, .7, leaf.dots], [.6, 2.4, .2, .5, blue], [-.55, 2.5, -.2, .55, leaf.scales], [.1, 3.3, -.1, .5, blue]]
+          .forEach(([px, py, pz, radius, material]) => ball(radius, material, px, py, pz));
+        break;
+      }
+      default: { // bare branches, each ending in a bud
+        trunk(1.7, .1);
+        [[1.5, .5, 0], [1.3, .7, 2.1], [1.4, .6, 4.2], [1.1, .15, 1]].forEach(([length, lean, turn], i) => {
+          const tip = branch(length, lean, turn, 1.5);
+          ball(i === 3 ? .5 : .38, i % 2 ? leaf.dots : blue, tip.x, tip.y + .15, tip.z);
+        });
+      }
+    }
+    return group;
   }
 
   const DISTRICTS = {
@@ -252,7 +334,7 @@ export function buildTown(scene) {
     const h = style.floors * style.floorHeight;
     const {solid, L, S, alongX} = unit(lot, inner, h);
     walls(solid, L, h, S, style.facade, style.floors);
-    const top = CURB + h, tiles = random() < .14 ? pick(blueRoofs) : pick(roofs);
+    const top = CURB + h, tiles = pick(roofs);
     if (style.roof === 'gable' || style.roof === 'hip') {
       const rise = Math.max(1.2, Math.min(2.8, S * .3)), hip = style.roof === 'hip';
       outline(add(solid, roofGeometry(L + .6, S + .6, rise, hip ? Math.min(L / 2 - .2, S / 2) : 0), [tiles, hip ? tiles : white], 0, top, 0));
@@ -264,7 +346,7 @@ export function buildTown(scene) {
       if (random() < .6) outline(box(solid, 1.6, 1, 1.6, white, (random() - .5) * (L - 2.4), top + .5, (random() - .5) * (S - 2.4)));
       if (style.floors >= 3 && random() < .6) {
         const x = (random() - .5) * (L - 2), z = (random() - .5) * (S - 2);
-        add(solid, new THREE.CylinderGeometry(.7, .7, 1.1, 14), random() < .3 ? blue : white, x, top + 1.25, z);
+        outline(add(solid, new THREE.CylinderGeometry(.7, .7, 1.1, 14), white, x, top + 1.25, z));
         box(solid, 1, .7, 1, ink, x, top + .35, z);
       }
     }
@@ -280,7 +362,7 @@ export function buildTown(scene) {
   function garden(lot, inner) {
     const {solid, L, S} = unit(lot, inner, .9);
     box(solid, L, .04, S, standard({color: 0xededed}), 0, CURB + .02, 0, false);
-    for (let i = 0; i < 2; i++) tree(solid, (random() - .5) * (L - 2), (random() - .5) * (S - 2), Math.floor(random() * 4), 1.1);
+    for (let i = 0; i < 2; i++) tree(solid, (random() - .5) * (L - 2), (random() - .5) * (S - 2), Math.floor(random() * 5), 1.05);
     solid.add(new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(L, .9, S)), edge)).position.y = CURB + .45;
   }
 
@@ -310,7 +392,7 @@ export function buildTown(scene) {
       face.rotation.y = side * Math.PI / 2;
       face.translateZ(shaft / 2 + .03);
     }
-    const cap = outline(add(tower, new THREE.ConeGeometry(shaft * .82, 3.4, 4), blue, 0, CURB + height + 1.7, 0));
+    const cap = outline(add(tower, new THREE.ConeGeometry(shaft * .82, 3.4, 4), roofs[0], 0, CURB + height + 1.7, 0));
     cap.rotation.y = Math.PI / 4;
     add(tower, new THREE.SphereGeometry(.22, 10, 8), ink, 0, CURB + height + 3.6, 0);
     solid.add(tower);
@@ -323,7 +405,7 @@ export function buildTown(scene) {
     outline(add(solid, roofGeometry(L, S, 1.5, 0, 1.2), [glass, glass], 0, CURB + 3, 0, false));
     for (let i = 0; i < 6; i++) {
       const x = (i % 3 - 1) * L * .28, z = (i < 3 ? -1 : 1) * S * .2, size = .5 + (i % 2) * .25;
-      add(solid, new THREE.IcosahedronGeometry(size, 1), i % 3 === 1 ? blue : leaf.dots, x, CURB + .9 + size * .4, z, false);
+      add(solid, new THREE.IcosahedronGeometry(size, 1), i % 3 === 1 ? leaf.scales : leaf.dots, x, CURB + .9 + size * .4, z, false);
       box(solid, .5, .5, .5, ink, x, CURB + .25, z, false);
     }
   }
@@ -350,7 +432,7 @@ export function buildTown(scene) {
     if (block.kind === 'park') {
       box(scene, w, .02, d, standard({color: 0xededed}), x, .005, z, false);
       for (let tx = block.x0 + 1; tx < block.x1; tx += 2) for (let tz = block.z0 + 1; tz < block.z1; tz += 2) {
-        if ((tx * 7 + tz * 13) % 3 !== 0) tree(scene, tx, tz, Math.abs(tx * 3 + tz * 5) % 4, 1 + Math.abs(tx + tz) % 3 * .12).castShadow = true;
+        if ((tx * 7 + tz * 13) % 3 !== 0) tree(scene, tx, tz, Math.abs(tx * 3 + tz * 5) % 5, 1 + Math.abs(tx + tz) % 3 * .12);
       }
       continue;
     }
