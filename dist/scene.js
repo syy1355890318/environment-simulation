@@ -1,50 +1,328 @@
 import * as THREE from './vendor/three.module.js';
-import {projectToScreen,groundPointFromScreen} from './projection.js';
-import {BUILDINGS} from './spatial.js';
+import {projectToScreen, groundPointFromScreen} from './projection.js';
+import {SIZE, SIDEWALK, BLOCKS, PLACES} from './city.js';
 import {createSpatialOverlay} from './spatial-overlay.js';
-export function createWorld(host,stateProvider,onSelect,onLocate=()=>{},spatial=null){
- const renderer=new THREE.WebGLRenderer({antialias:true,alpha:true});renderer.setPixelRatio(Math.min(devicePixelRatio,2));renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFSoftShadowMap;renderer.setClearColor(0,0);renderer.outputColorSpace=THREE.SRGBColorSpace;host.append(renderer.domElement);
- const scene=new THREE.Scene();const camera=new THREE.OrthographicCamera(-30,30,25,-25,.1,200);let azimuth=.72,elevation=.72,zoom=1,overhead=false,selected=null,focusId=null,hoverId=null;
- scene.add(new THREE.HemisphereLight(0xffffff,0xe8e6df,2.6));const sun=new THREE.DirectionalLight(0xffffff,1.1);sun.position.set(-20,45,18);sun.castShadow=true;sun.shadow.mapSize.set(2048,2048);sun.shadow.camera.left=-40;sun.shadow.camera.right=40;sun.shadow.camera.top=40;sun.shadow.camera.bottom=-40;sun.shadow.normalBias=.05;scene.add(sun);
- const mat=(color,roughness=.8)=>new THREE.MeshStandardMaterial({color,roughness});const ground=mat(0xf1f0ec),road=mat(0xe4e3dd),paving=mat(0xf1f0ec),wallA=mat(0xffffff),wallB=mat(0xfafaf7),wallC=mat(0xf6f5f1),dark=mat(0x3a3a37),orange=mat(0xc64f28),parcelMat=mat(0xc7a27c);
- function box(w,h,d,material,x,y,z,parent=scene){const mesh=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),material);mesh.position.set(x,y,z);mesh.castShadow=true;mesh.receiveShadow=true;parent.add(mesh);return mesh;}
- box(47,.35,38,paving,0,-.24,0);box(47,.2,38,ground,0,-.43,0);
- const grid=new THREE.GridHelper(46,23,0xd9d8d1,0xd9d8d1);grid.position.y=-.045;grid.material.transparent=true;grid.material.opacity=.5;scene.add(grid);
- const pathMeshes=[],routeLines=[],barriers=[];const initial=stateProvider();
- initial.segments.forEach((s,i)=>{const dx=s.end.x-s.start.x,dz=s.end.z-s.start.z,length=Math.hypot(dx,dz),centerX=(s.start.x+s.end.x)/2,centerZ=(s.start.z+s.end.z)/2;const horizontal=dx!==0;
- box(horizontal?length+3.4:3.4,.08,horizontal?3.4:length+3.4,road,centerX,.03,centerZ);const hit=box(horizontal?length:2.6,.1,horizontal?2.6:length,new THREE.MeshStandardMaterial({color:0xe4e3dd,roughness:.9}),centerX,.1,centerZ);hit.userData.segmentId=s.id;pathMeshes.push(hit);
- const curve=new THREE.LineCurve3(new THREE.Vector3(s.start.x,.18,s.start.z),new THREE.Vector3(s.end.x,.18,s.end.z));const tube=new THREE.Mesh(new THREE.TubeGeometry(curve,1,.085,8,false),new THREE.MeshStandardMaterial({color:0xe39a7c,roughness:.6}));scene.add(tube);routeLines.push(tube);
- for(let d=length/2;d<length;d+=length){const arrow=new THREE.Mesh(new THREE.ConeGeometry(.2,.46,3),mat(0xe39a7c));arrow.rotation.x=Math.PI/2;arrow.rotation.z=horizontal?-Math.PI/2:Math.PI;arrow.position.set(s.start.x+dx*d/length,.19,s.start.z+dz*d/length);scene.add(arrow);}
- const barrier=new THREE.Group();barrier.position.set(centerX,.05,centerZ);if(horizontal)barrier.rotation.y=Math.PI/2;for(const x of[-.8,.8])box(.12,1,.12,dark,x,.5,0,barrier);box(2,.32,.16,orange,0,.8,0,barrier);for(const x of[-.6,0,.6])box(.21,.34,.18,paving,x,.8,0,barrier);barrier.visible=false;scene.add(barrier);barriers.push(barrier);
- });
- const nodes=[initial.package.pickup,...initial.segments.map(s=>s.end)];nodes.forEach((p,i)=>{const m=new THREE.Mesh(new THREE.CylinderGeometry(i===0||i===4?.65:.32,i===0||i===4?.65:.32,.08,32),mat(0xc64f28));m.position.set(p.x,.14,p.z);scene.add(m);if(i===0||i===4){const ring=new THREE.Mesh(new THREE.TorusGeometry(1,.035,8,64),mat(0xc64f28));ring.rotation.x=Math.PI/2;ring.position.set(p.x,.19,p.z);scene.add(ring);}});
- function building(x,z,w,d,h,material){return box(w,h,d,material,x,h/2+.15,z);}
- const walls={A:wallA,B:wallB,C:wallC};BUILDINGS.forEach(b=>building(b.x,b.z,b.w,b.d,b.h*.45,walls[b.style]));
- function tree(x,z,scale=1){const trunk=new THREE.Mesh(new THREE.CylinderGeometry(.08,.12,1.1,6),mat(0xc4c2ba));trunk.position.set(x,.6,z);scene.add(trunk);const crown=new THREE.Mesh(new THREE.IcosahedronGeometry(.65*scale,1),mat(0xd5d8ce));crown.position.set(x,1.3*scale,z);crown.castShadow=true;scene.add(crown);}
- [[-8,3],[-8,1],[-8,-1],[-8,-3],[-8,-5],[1,7],[4,7],[7,7],[13,-7],[13,-9],[-18,10],[-15,13],[1,-7],[4,-7],[7,-7],[-4,13],[-1,13]].forEach(([x,z],i)=>tree(x,z,.75+(i%3)*.15));
- const robot=new THREE.Group();scene.add(robot);box(1.35,.85,1.6,orange,0,.8,0,robot);box(1.2,.12,1.45,paving,0,1.27,0,robot);box(1.3,.16,1.5,dark,0,.28,0,robot);box(.95,.25,.04,dark,0,.96,.815,robot);for(const x of[-.29,.29])box(.16,.065,.05,mat(0xffffff),x,.97,.85,robot);for(const x of[-.77,.77])for(const z of[-.47,.47]){const wheel=new THREE.Mesh(new THREE.CylinderGeometry(.23,.23,.18,20),dark);wheel.rotation.z=Math.PI/2;wheel.position.set(x,.29,z);robot.add(wheel);}const antenna=new THREE.Mesh(new THREE.CylinderGeometry(.022,.022,.5,8),dark);antenna.position.set(-.5,1.52,-.5);robot.add(antenna);const antennaTop=new THREE.Mesh(new THREE.SphereGeometry(.06,12,8),orange);antennaTop.position.set(-.5,1.8,-.5);robot.add(antennaTop);
- const packageMesh=new THREE.Group();scene.add(packageMesh);box(.65,.58,.65,parcelMat,0,.29,0,packageMesh);box(.11,.015,.67,mat(0xe9dcc8),0,.587,0,packageMesh);box(.12,.58,.015,mat(0xe9dcc8),0,.29,.335,packageMesh);box(.21,.16,.015,paving,.18,.35,.343,packageMesh);
- robot.userData.entityId='R-01';packageMesh.userData.entityId='PKG-001';
- const queryRing=new THREE.Mesh(new THREE.RingGeometry(.97,1,64),new THREE.MeshBasicMaterial({color:0x1f1f1d,side:THREE.DoubleSide,transparent:true,opacity:.85,depthTest:false}));queryRing.rotation.x=-Math.PI/2;queryRing.visible=false;scene.add(queryRing);
- const queryPin=new THREE.Mesh(new THREE.SphereGeometry(.13,12,8),new THREE.MeshBasicMaterial({color:0x1f1f1d,depthTest:false}));queryPin.visible=false;scene.add(queryPin);
- const queryLine=new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(),new THREE.Vector3()]),new THREE.LineBasicMaterial({color:0x1f1f1d,depthTest:false}));queryLine.visible=false;scene.add(queryLine);
- let locationSelection=null,highlightKey='';
- const raycaster=new THREE.Raycaster(),pointer=new THREE.Vector2();let drag,lastX,lastY,startX,startY,dragged=false,occupantDrag=null;
- const setPointer=e=>{updateCamera();scene.updateMatrixWorld(true);const rect=renderer.domElement.getBoundingClientRect();pointer.set((e.clientX-rect.left)/rect.width*2-1,-(e.clientY-rect.top)/rect.height*2+1);raycaster.setFromCamera(pointer,camera);return rect;};
- const occupantAt=e=>{setPointer(e);return overlay.occupantAt(raycaster);};
- const entityAt=()=>{let object=raycaster.intersectObjects([robot,packageMesh],true)[0]?.object;while(object&&!object.userData.entityId)object=object.parent;return object?.userData.entityId||null;};
- renderer.domElement.addEventListener('pointerdown',e=>{const held=spatial&&occupantAt(e);if(held){occupantDrag={id:held,moved:false};renderer.domElement.setPointerCapture(e.pointerId);startX=e.clientX;startY=e.clientY;renderer.domElement.style.cursor='grabbing';return;}drag=true;dragged=false;lastX=startX=e.clientX;lastY=startY=e.clientY;renderer.domElement.setPointerCapture(e.pointerId);});renderer.domElement.addEventListener('pointermove',e=>{if(occupantDrag){if(Math.hypot(e.clientX-startX,e.clientY-startY)>4)occupantDrag.moved=true;if(occupantDrag.moved){const position=groundPointFromScreen(e.clientX,e.clientY,camera,renderer.domElement.getBoundingClientRect());if(position)overlay.preview(occupantDrag.id,position,!spatial.placementProblem(occupantDrag.id,position));}return;}if(!drag){if(spatial&&e.pointerType==='mouse'){const occupant=occupantAt(e);const entity=occupant?null:entityAt();hoverId=occupant||entity;renderer.domElement.style.cursor=occupant?'grab':entity?'pointer':'';}return;}const dx=e.clientX-lastX,dy=e.clientY-lastY;if(Math.hypot(e.clientX-startX,e.clientY-startY)>4)dragged=true;azimuth-=dx*.006;elevation=Math.max(.35,Math.min(1.35,elevation+dy*.005));lastX=e.clientX;lastY=e.clientY;});renderer.domElement.addEventListener('pointerup',e=>{if(occupantDrag){const {id,moved}=occupantDrag;occupantDrag=null;renderer.domElement.style.cursor='grab';overlay.preview(null);if(moved){const position=groundPointFromScreen(e.clientX,e.clientY,camera,renderer.domElement.getBoundingClientRect());if(position)spatial.drop(id,position);}else spatial.click(id);return;}drag=false;if(dragged)return;const rect=setPointer(e);const entity=entityAt();if(entity){onSelect(entity);return;}const hit=raycaster.intersectObjects(pathMeshes)[0];if(hit){onSelect(hit.object.userData.segmentId);return;}const position=groundPointFromScreen(e.clientX,e.clientY,camera,rect);if(position)onLocate({kind:'point',position});});renderer.domElement.addEventListener('pointercancel',()=>{drag=false;occupantDrag=null;overlay.preview(null);});renderer.domElement.addEventListener('wheel',e=>{e.preventDefault();zoom=Math.max(.65,Math.min(2,zoom-e.deltaY*.001));},{passive:false});
- const labelHost=document.getElementById('scene-labels'),labelElements=[];for(const[type,title]of[['pickup','Pickup'],['destination','Destination'],['robot','R-01']]){const element=document.createElement('div');element.className=`map-label ${type}-label`;element.textContent=title;labelHost.append(element);labelElements.push(element);}
- const queryLabel=document.createElement('div');queryLabel.className='map-label';queryLabel.hidden=true;labelHost.append(queryLabel);
- const packageLabel=document.createElement('div');packageLabel.className='map-label';packageLabel.textContent=initial.package.id;labelHost.append(packageLabel);
- const compassLabel=document.createElement('div');compassLabel.className='map-label pickup-label';compassLabel.textContent='N';labelHost.append(compassLabel);const compassOrigin=new THREE.Vector3(21,.3,16);scene.add(new THREE.ArrowHelper(new THREE.Vector3(0,0,-1),compassOrigin,2.5,0x9b9a92,.5,.3));
- function placeLabel(element,position,height=0,offset=0){const screen=projectToScreen(position,camera,renderer.domElement.getBoundingClientRect(),height);element.style.left=screen.x+'px';element.style.top=(screen.y+offset)+'px';element.hidden=!screen.visible;}
- function highlightLocation(selection){locationSelection=selection;const key=JSON.stringify(selection);if(key===highlightKey)return;highlightKey=key;queryLabel.hidden=!selection?.showLabel;queryPin.visible=!!selection;queryRing.visible=!!selection&&selection.kind!=='segment'&&selection.radius>0;queryLine.visible=selection?.kind==='segment';if(!selection)return;const p=selection.position;queryPin.position.set(p.x,.28,p.z);queryRing.position.set(p.x,.24,p.z);queryRing.scale.setScalar(selection.radius);if(selection.kind==='segment'){const positions=queryLine.geometry.attributes.position;positions.setXYZ(0,selection.start.x,.27,selection.start.z);positions.setXYZ(1,selection.end.x,.27,selection.end.z);positions.needsUpdate=true;queryLine.geometry.computeBoundingSphere();}queryLabel.textContent=selection.name;}
- const overlay=createSpatialOverlay(scene,labelHost,placeLabel);
- function updateCamera(){const aspect=innerWidth/innerHeight,span=Math.max(40,50/aspect);camera.left=-span*aspect/2;camera.right=span*aspect/2;camera.top=span/2;camera.bottom=-span/2;camera.zoom=zoom;camera.updateProjectionMatrix();const el=overhead?1.54:elevation;camera.position.set(55*Math.sin(azimuth)*Math.cos(el),55*Math.sin(el),55*Math.cos(azimuth)*Math.cos(el));camera.lookAt(0,0,0);camera.updateMatrixWorld();}
- function resize(){renderer.setSize(innerWidth,innerHeight);updateCamera();}window.addEventListener('resize',resize);resize();
- function render(){const state=stateProvider(),r=state.robot,p=state.package;robot.position.set(r.position.x,.08,r.position.z);if(state.movement)robot.rotation.y=Math.atan2(state.movement.end.x-state.movement.start.x,state.movement.end.z-state.movement.start.z);if(r.carryingId){packageMesh.position.set(r.position.x,1.46,r.position.z);}else packageMesh.position.set(p.position.x,Math.hypot(p.position.x-r.position.x,p.position.z-r.position.z)<1e-7?2.05:.17,p.position.z);
- pathMeshes.forEach((m,i)=>{const s=state.segments[i];m.material.color.setHex(s.id===selected?0xf3dccf:s.blocked?0xe9dcd6:0xe4e3dd);routeLines[i].material.color.setHex(i<state.nextIndex?0xc64f28:s.blocked?0xa8a79f:0xe39a7c);barriers[i].visible=s.blocked;});
- updateCamera();[{x:p.pickup.x,z:p.pickup.z+3.7},{x:p.destination.x,z:p.destination.z+3.7},r.position].forEach((point,i)=>placeLabel(labelElements[i],point,i===2?2.35:.1,i===2?-8:0));labelElements[2].hidden=focusId!==r.id&&hoverId!==r.id;placeLabel(packageLabel,p.position,packageMesh.position.y+.8,-8);packageLabel.hidden=focusId!==p.id&&hoverId!==p.id;if(locationSelection?.showLabel)placeLabel(queryLabel,locationSelection.position,.32,-16);else queryLabel.hidden=true;placeLabel(compassLabel,{x:21,z:12.9},.2);if(spatial)overlay.update(spatial.snapshot(),spatial.occupants(),[focusId,hoverId]);renderer.render(scene,camera);}
- return{render,select:id=>selected=id,setFocus:id=>focusId=id,highlightLocation,projectPosition:position=>projectToScreen(position,camera,renderer.domElement.getBoundingClientRect()),zoom:delta=>zoom=Math.max(.65,Math.min(2,zoom+delta)),resetView:()=>{azimuth=.72;elevation=.72;zoom=1;overhead=false;},toggleTop:()=>overhead=!overhead};
+import {createDeliveryLayer} from './delivery-layer.js';
+
+const HOME = {azimuth: .72, elevation: .85, zoom: 1};
+const ZOOM = {min: .8, max: 6};
+const CAMERA_DISTANCE = 160;
+const CLICK_SLOP = 4;
+const INK = 0x141414, BLUE = 0x1f33c4;
+
+export function createWorld(host, stateProvider, onSelect, onLocate = () => {}, spatial = null) {
+  const renderer = new THREE.WebGLRenderer({antialias: true, alpha: true});
+  renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.setClearColor(0, 0);
+  renderer.outputColorSpace = THREE.SRGBColorSpace;
+  host.append(renderer.domElement);
+  const canvas = renderer.domElement;
+
+  const scene = new THREE.Scene();
+  const camera = new THREE.OrthographicCamera(-30, 30, 25, -25, .1, 600);
+  let {azimuth, elevation, zoom} = HOME, overhead = false, selected = null, focusId = null, hoverId = null;
+  const target = {x: 0, z: 0};
+
+  scene.add(new THREE.HemisphereLight(0xffffff, 0xe6e6e6, 2.6));
+  const sun = new THREE.DirectionalLight(0xffffff, 1.1);
+  sun.position.set(-40, 90, 36);
+  sun.castShadow = true;
+  sun.shadow.mapSize.setScalar(innerWidth > 800 ? 4096 : 2048);
+  Object.assign(sun.shadow.camera, {left: -80, right: 80, top: 80, bottom: -80, near: 1, far: 260});
+  sun.shadow.normalBias = .08;
+  scene.add(sun);
+
+  const mat = (color, roughness = .8) => new THREE.MeshStandardMaterial({color, roughness});
+  function box(w, h, d, material, x, y, z, parent = scene) {
+    const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), material);
+    mesh.position.set(x, y, z);
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+    parent.add(mesh);
+    return mesh;
+  }
+
+  // Streets are the bare ground; the cell grid shows only where something can stand.
+  const street = mat(0xe6e6e6), sidewalk = mat(0xf5f5f5), lawn = mat(0xededed), plaza = mat(0xf0f0f0);
+  const walls = [mat(0xffffff), mat(0xfafafa), mat(0xf4f4f4)];
+  const ink = new THREE.LineBasicMaterial({color: INK, transparent: true, opacity: .55});
+  // Thin ink edges give the massing a drawn look.
+  const outline = mesh => mesh.add(new THREE.LineSegments(new THREE.EdgesGeometry(mesh.geometry), ink));
+  box(SIZE.x * 2, .4, SIZE.z * 2, street, 0, -.2, 0).castShadow = false;
+  const gridPoints = [];
+  for (let x = -SIZE.x + 1; x < SIZE.x; x += 2) gridPoints.push(x, .03, -SIZE.z, x, .03, SIZE.z);
+  for (let z = -SIZE.z + 1; z < SIZE.z; z += 2) gridPoints.push(-SIZE.x, .03, z, SIZE.x, .03, z);
+  const gridGeometry = new THREE.BufferGeometry();
+  gridGeometry.setAttribute('position', new THREE.Float32BufferAttribute(gridPoints, 3));
+  scene.add(new THREE.LineSegments(gridGeometry, new THREE.LineBasicMaterial({color: 0xc8c8c8, transparent: true, opacity: .6})));
+
+  BLOCKS.forEach((block, index) => {
+    const w = block.x1 - block.x0, d = block.z1 - block.z0, x = (block.x0 + block.x1) / 2, z = (block.z0 + block.z1) / 2;
+    if (block.kind !== 'building') {
+      box(w, .02, d, block.kind === 'park' ? lawn : plaza, x, .005, z).castShadow = false;
+      return;
+    }
+    box(w, .14, d, sidewalk, x, .07, z).castShadow = false;
+    // One footprint, drawn as a few low volumes so people in the street behind stay in view.
+    const alongX = w >= d, long = (alongX ? w : d) - 2 * SIDEWALK, short = (alongX ? d : w) - 2 * SIDEWALK;
+    const parts = Math.max(1, Math.min(3, Math.round(long / 8)));
+    for (let part = 0; part < parts; part++) {
+      const height = .8 + ((index * 5 + part * 3) % 6) * .25, offset = -long / 2 + long * (part + .5) / parts;
+      outline(box(alongX ? long / parts : short, height, alongX ? short : long / parts, walls[(index + part) % 3],
+        x + (alongX ? offset : 0), .14 + height / 2, z + (alongX ? 0 : offset)));
+    }
+  });
+
+  const trunk = mat(INK), crowns = [mat(0xffffff), mat(BLUE), mat(0xd9d9d9)];
+  const park = BLOCKS.find(block => block.kind === 'park');
+  for (let x = park.x0 + 2; x < park.x1; x += 2) for (let z = park.z0 + 2; z < park.z1; z += 2) {
+    if ((x * 7 + z * 13) % 3 === 0) continue;
+    const scale = .8 + ((x + z) % 3) * .12;
+    const stem = new THREE.Mesh(new THREE.CylinderGeometry(.08, .12, 1.1, 6), trunk);
+    stem.position.set(x, .55, z);
+    const leaves = new THREE.Mesh(new THREE.IcosahedronGeometry(.7 * scale, 1), crowns[Math.abs(x * 3 + z) % 3]);
+    leaves.position.set(x, 1.4 * scale, z);
+    leaves.castShadow = true;
+    scene.add(stem, leaves);
+  }
+
+  const labelHost = document.getElementById('scene-labels');
+  function placeLabel(element, position, height = 0, offset = 0) {
+    const screen = projectToScreen(position, camera, canvas.getBoundingClientRect(), height);
+    element.style.left = screen.x + 'px';
+    element.style.top = (screen.y + offset) + 'px';
+    element.hidden = !screen.visible;
+  }
+  function addLabel(text, name = '') {
+    const element = document.createElement('div');
+    element.className = `map-label ${name}`;
+    element.textContent = text;
+    labelHost.append(element);
+    return element;
+  }
+
+  const exhibit = mat(BLUE), charger = mat(INK), stone = mat(0xffffff);
+  const placeLabels = [];
+  for (const item of PLACES) {
+    const {x, z} = item.position;
+    if (item.kind === 'exhibit') {
+      const disc = new THREE.Mesh(new THREE.CylinderGeometry(.8, .8, .06, 32), exhibit);
+      disc.position.set(x, .05, z);
+      scene.add(disc);
+      box(.45, 1.5, .45, stone, x, .8, z);
+      box(.55, .14, .55, exhibit, x, 1.62, z);
+      placeLabels.push({element: addLabel(item.name, 'place-label'), position: {x, z: z + 1.6}});
+    } else if (item.kind === 'charger') {
+      const disc = new THREE.Mesh(new THREE.CylinderGeometry(.8, .8, .06, 32), charger);
+      disc.position.set(x, .05, z);
+      scene.add(disc);
+      box(.5, .8, .3, stone, x, .45, z - .5);
+      box(.52, .12, .32, charger, x, .91, z - .5);
+    }
+  }
+  const compass = new THREE.Vector3(SIZE.x - 3, .3, SIZE.z - 2);
+  scene.add(new THREE.ArrowHelper(new THREE.Vector3(0, 0, -1), compass, 3, 0x8a8a8a, .6, .36));
+  const compassLabel = addLabel('N', 'place-label');
+
+  const initial = stateProvider();
+  const delivery = initial.delivery === false ? null : createDeliveryLayer(scene, {box, mat}, labelHost, placeLabel, initial);
+
+  const queryMaterial = new THREE.MeshBasicMaterial({color: INK, side: THREE.DoubleSide, transparent: true, opacity: .85, depthTest: false});
+  const queryRing = new THREE.Mesh(new THREE.RingGeometry(.97, 1, 64), queryMaterial);
+  queryRing.rotation.x = -Math.PI / 2;
+  const queryPin = new THREE.Mesh(new THREE.SphereGeometry(.13, 12, 8), queryMaterial);
+  const queryLine = new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3()]), new THREE.LineBasicMaterial({color: INK, depthTest: false}));
+  queryRing.visible = queryPin.visible = queryLine.visible = false;
+  scene.add(queryRing, queryPin, queryLine);
+  const queryLabel = addLabel('');
+  let locationSelection = null, highlightKey = '';
+  function highlightLocation(selection) {
+    locationSelection = selection;
+    const key = JSON.stringify(selection);
+    if (key === highlightKey) return;
+    highlightKey = key;
+    queryPin.visible = !!selection;
+    queryRing.visible = !!selection && selection.kind !== 'segment' && selection.radius > 0;
+    queryLine.visible = selection?.kind === 'segment';
+    if (!selection) return;
+    const p = selection.position;
+    queryPin.position.set(p.x, .28, p.z);
+    queryRing.position.set(p.x, .24, p.z);
+    queryRing.scale.setScalar(selection.radius);
+    if (selection.kind === 'segment') {
+      const positions = queryLine.geometry.attributes.position;
+      positions.setXYZ(0, selection.start.x, .27, selection.start.z);
+      positions.setXYZ(1, selection.end.x, .27, selection.end.z);
+      positions.needsUpdate = true;
+      queryLine.geometry.computeBoundingSphere();
+    }
+    queryLabel.textContent = selection.name;
+  }
+
+  const overlay = createSpatialOverlay(scene, labelHost, placeLabel);
+
+  function updateCamera() {
+    // At zoom 1 the whole city fits the window.
+    const aspect = innerWidth / innerHeight, span = Math.max(98, 128 / aspect);
+    Object.assign(camera, {left: -span * aspect / 2, right: span * aspect / 2, top: span / 2, bottom: -span / 2, zoom});
+    camera.updateProjectionMatrix();
+    const tilt = overhead ? 1.54 : elevation;
+    camera.position.set(
+      target.x + CAMERA_DISTANCE * Math.sin(azimuth) * Math.cos(tilt), CAMERA_DISTANCE * Math.sin(tilt),
+      target.z + CAMERA_DISTANCE * Math.cos(azimuth) * Math.cos(tilt));
+    camera.lookAt(target.x, 0, target.z);
+    camera.updateMatrixWorld();
+  }
+  function resize() {
+    renderer.setSize(innerWidth, innerHeight);
+    updateCamera();
+  }
+  window.addEventListener('resize', resize);
+  resize();
+
+  const clamp = (value, low, high) => Math.max(low, Math.min(high, value));
+  const setZoom = value => { zoom = clamp(value, ZOOM.min, ZOOM.max); };
+  const groundAt = (x, y) => groundPointFromScreen(x, y, camera, canvas.getBoundingClientRect());
+  // Slide the map so the ground under the pointer stays under it.
+  function panBetween(fromX, fromY, toX, toY) {
+    updateCamera();
+    const from = groundAt(fromX, fromY), to = groundAt(toX, toY);
+    if (!from || !to) return;
+    target.x = clamp(target.x + from.x - to.x, -SIZE.x, SIZE.x);
+    target.z = clamp(target.z + from.z - to.z, -SIZE.z, SIZE.z);
+  }
+
+  const raycaster = new THREE.Raycaster(), pointer = new THREE.Vector2();
+  function aim(event) {
+    updateCamera();
+    scene.updateMatrixWorld(true);
+    const rect = canvas.getBoundingClientRect();
+    pointer.set((event.clientX - rect.left) / rect.width * 2 - 1, -(event.clientY - rect.top) / rect.height * 2 + 1);
+    raycaster.setFromCamera(pointer, camera);
+  }
+  const occupantAt = event => { aim(event); return spatial ? overlay.occupantAt(raycaster) : null; };
+
+  // One pointer pans (or orbits with the right button or Shift); two pointers pinch, twist, and pan.
+  const pointers = new Map();
+  let gesture = null, moved = false, start = null, occupantDrag = null, pinch = null;
+  const pinchState = () => {
+    const [a, b] = [...pointers.values()];
+    return {distance: Math.hypot(b.x - a.x, b.y - a.y), angle: Math.atan2(b.y - a.y, b.x - a.x), x: (a.x + b.x) / 2, y: (a.y + b.y) / 2};
+  };
+
+  canvas.addEventListener('contextmenu', event => event.preventDefault());
+  canvas.addEventListener('pointerdown', event => {
+    canvas.setPointerCapture(event.pointerId);
+    if (!pointers.size && event.button === 0 && !event.shiftKey) {
+      const held = occupantAt(event);
+      if (held) {
+        occupantDrag = {id: held, moved: false};
+        start = {x: event.clientX, y: event.clientY};
+        canvas.style.cursor = 'grabbing';
+        return;
+      }
+    }
+    if (occupantDrag) return;
+    pointers.set(event.pointerId, {x: event.clientX, y: event.clientY});
+    if (pointers.size === 1) {
+      gesture = event.button === 2 || event.shiftKey ? 'orbit' : 'pan';
+      moved = false;
+      start = {x: event.clientX, y: event.clientY};
+    } else if (pointers.size === 2) {
+      gesture = 'pinch';
+      moved = true;
+      pinch = pinchState();
+    }
+  });
+  canvas.addEventListener('pointermove', event => {
+    if (occupantDrag) {
+      if (Math.hypot(event.clientX - start.x, event.clientY - start.y) > CLICK_SLOP) occupantDrag.moved = true;
+      const position = occupantDrag.moved && groundAt(event.clientX, event.clientY);
+      if (position) overlay.preview(occupantDrag.id, position, !spatial.placementProblem(occupantDrag.id, position));
+      return;
+    }
+    const last = pointers.get(event.pointerId);
+    if (!last) {
+      if (event.pointerType !== 'mouse') return;
+      const occupant = occupantAt(event), entity = occupant ? null : delivery?.entityAt(raycaster);
+      hoverId = occupant || entity || null;
+      canvas.style.cursor = occupant ? 'grab' : entity ? 'pointer' : '';
+      return;
+    }
+    const next = {x: event.clientX, y: event.clientY};
+    if (gesture === 'pinch' && pointers.size === 2) {
+      pointers.set(event.pointerId, next);
+      const now = pinchState();
+      setZoom(zoom * now.distance / Math.max(pinch.distance, 1));
+      azimuth += now.angle - pinch.angle;
+      panBetween(pinch.x, pinch.y, now.x, now.y);
+      pinch = now;
+      return;
+    }
+    if (Math.hypot(next.x - start.x, next.y - start.y) > CLICK_SLOP) moved = true;
+    if (moved && gesture === 'pan') panBetween(last.x, last.y, next.x, next.y);
+    if (moved && gesture === 'orbit') {
+      azimuth -= (next.x - last.x) * .006;
+      elevation = clamp(elevation + (next.y - last.y) * .005, .35, 1.35);
+    }
+    pointers.set(event.pointerId, next);
+    if (moved) canvas.style.cursor = 'grabbing';
+  });
+  function release(event) {
+    if (occupantDrag) {
+      const {id, moved: dragged} = occupantDrag;
+      occupantDrag = null;
+      canvas.style.cursor = '';
+      overlay.preview(null);
+      if (event.type !== 'pointerup') return;
+      const position = dragged && groundAt(event.clientX, event.clientY);
+      if (position) spatial.drop(id, position);
+      else if (!dragged) spatial.click(id);
+      return;
+    }
+    if (!pointers.delete(event.pointerId)) return;
+    canvas.style.cursor = '';
+    if (pointers.size) {
+      // A finger lifted mid-pinch: carry on panning with the one that is left.
+      gesture = 'pan';
+      return;
+    }
+    if (moved || event.type !== 'pointerup') return;
+    aim(event);
+    const picked = delivery?.entityAt(raycaster) || delivery?.segmentAt(raycaster);
+    if (picked) { onSelect(picked); return; }
+    const position = groundAt(event.clientX, event.clientY);
+    if (position && Math.abs(position.x) <= SIZE.x && Math.abs(position.z) <= SIZE.z) onLocate({kind: 'point', position});
+  }
+  canvas.addEventListener('pointerup', release);
+  canvas.addEventListener('pointercancel', release);
+  canvas.addEventListener('wheel', event => {
+    event.preventDefault();
+    setZoom(zoom * Math.exp(-event.deltaY * .0015));
+  }, {passive: false});
+
+  function render() {
+    updateCamera();
+    const attention = [focusId, hoverId];
+    delivery?.update(stateProvider(), selected, attention);
+    for (const {element, position} of placeLabels) placeLabel(element, position, .1);
+    placeLabel(compassLabel, {x: compass.x, z: compass.z - 4.2}, .2);
+    if (locationSelection?.showLabel) placeLabel(queryLabel, locationSelection.position, .32, -16);
+    else queryLabel.hidden = true;
+    if (spatial) overlay.update(spatial.snapshot(), spatial.occupants(), attention);
+    renderer.render(scene, camera);
+  }
+
+  return {
+    render, highlightLocation,
+    select: id => { selected = id; },
+    setFocus: id => { focusId = id; },
+    projectPosition: position => projectToScreen(position, camera, canvas.getBoundingClientRect()),
+    zoomBy: factor => setZoom(zoom * factor),
+    centerOn(position) { target.x = clamp(position.x, -SIZE.x, SIZE.x); target.z = clamp(position.z, -SIZE.z, SIZE.z); },
+    resetView() { ({azimuth, elevation, zoom} = HOME); overhead = false; target.x = target.z = 0; },
+    toggleTop() { overhead = !overhead; }
+  };
 }

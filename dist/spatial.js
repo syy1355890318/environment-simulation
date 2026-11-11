@@ -1,17 +1,12 @@
-// The occupiable grid: 2 m cells whose centers sit on even coordinates, matching
-// the visible ground grid and every route node. Relations are judged per cell.
-export const CELL = 2;
-export const BOUNDS = {x: 23, z: 19};
-const WALL_MARGIN = 0.4;
+import {SIZE, BUILDINGS} from './city.js';
 
-export const BUILDINGS = [
-  {x: -14, z: 0, w: 5, d: 5, h: 4.3, style: 'A'}, {x: -13, z: -9, w: 6, d: 6, h: 6.5, style: 'B'},
-  {x: -20, z: -4, w: 4, d: 5, h: 3.7, style: 'A'}, {x: -18, z: 15, w: 5, d: 4, h: 3.8, style: 'C'},
-  {x: 3, z: 2, w: 6, d: 6, h: 5.6, style: 'A'}, {x: 5, z: 12, w: 6, d: 5, h: 3.2, style: 'B'},
-  {x: 16, z: 8, w: 5, d: 7, h: 5.6, style: 'A'}, {x: 17, z: -1, w: 4.5, d: 4.5, h: 4.2, style: 'C'},
-  {x: 3, z: -13, w: 6, d: 5, h: 4.5, style: 'B'}, {x: 16, z: -13, w: 4, d: 5, h: 3.5, style: 'A'},
-  {x: -6, z: -15, w: 4, d: 4, h: 3.2, style: 'C'}
-];
+// The occupiable grid: 2 m cells whose centers sit on even coordinates, matching
+// the visible ground grid. Relations are judged per cell.
+export const CELL = 2;
+// Cell centers farther out than this are off the map.
+export const BOUNDS = {x: SIZE.x - 3, z: SIZE.z - 3};
+const WALL_MARGIN = 0.4;
+export {BUILDINGS};
 
 export const toCell = p => ({col: Math.round(p.x / CELL) + 0, row: Math.round(p.z / CELL) + 0});
 export const cellCenter = cell => ({x: cell.col * CELL + 0, z: cell.row * CELL + 0});

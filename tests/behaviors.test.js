@@ -63,8 +63,8 @@ test('occupants snap to cells, and bad placements throw without changing anythin
   const [occupant] = system.occupants(), before = {...occupant.position};
   assert.deepEqual(system.place(occupant.id, {x: 20.7, z: -6.4}).position, {x: 20, z: -6});
   const at = {...occupant.position};
-  assert.throws(() => system.place(occupant.id, {x: 16, z: 8}), /not occupiable/, 'inside a building');
-  assert.throws(() => system.place(occupant.id, {x: 40, z: 0}), /not occupiable/, 'off the map');
+  assert.throws(() => system.place(occupant.id, {x: 16, z: 14}), /not occupiable/, 'inside a building');
+  assert.throws(() => system.place(occupant.id, {x: 60, z: 0}), /not occupiable/, 'off the map');
   assert.throws(() => system.place(occupant.id, {x: NaN, z: 0}), /finite/);
   assert.throws(() => system.place(occupant.id, null), /finite/);
   assert.throws(() => system.place(occupant.id, {x: 12, z: -10}), /Another occupant/);
@@ -106,17 +106,17 @@ test('dragging a walker stops its walk', () => {
   const walker = system.occupants()[0];
   assert.ok(walker.walk);
   system.tick(1000);
-  system.place(walker.id, {x: 20, z: 12});
+  system.place(walker.id, {x: 20, z: 2});
   system.tick(1000);
-  assert.deepEqual(walker.position, {x: 20, z: 12});
+  assert.deepEqual(walker.position, {x: 20, z: 2});
   assert.equal(walker.walk, null);
 });
 
 test('adding and removing occupants assigns free ids and respects the limit', () => {
   const {system} = setup('street');
-  assert.equal(system.add('person', {x: 20, z: 12}).id, 'P-2');
+  assert.equal(system.add('person', {x: 20, z: 2}).id, 'P-2');
   system.remove('P-1');
-  assert.equal(system.add('person', {x: 20, z: 14}).id, 'P-1');
+  assert.equal(system.add('person', {x: 20, z: 4}).id, 'P-1');
   assert.throws(() => system.add('dragon', {x: 20, z: 16}), /Choose/);
   assert.throws(() => system.remove('P-9'), /existing occupant/);
   while (system.occupants().length < MAX_OCCUPANTS) system.add('cone', system.firstOpenCell());
@@ -133,7 +133,7 @@ test('the first open cell is really open and off the route', () => {
 
 test('the scene cannot change mid-movement; reset restores the current scene', () => {
   const {system, model} = setup('warning');
-  system.place('W-1', {x: 20, z: 12});
+  system.place('W-1', {x: 20, z: 2});
   model.pickup();
   model.move();
   assert.throws(() => system.loadScene('street'), /Finish movement/);
@@ -164,7 +164,7 @@ test('a crowd over the next segment makes the robot wait, and retry works once i
   assert.deepEqual(state.robot.position, state.segments[0].start);
   assert.ok(messages(model).at(-1).startsWith('S1 is blocked by a crowd of 3'));
   assert.equal(state.package.deliveryStatus, 'in transit', 'still carrying');
-  system.place('P-2', {x: 20, z: 12});
+  system.place('P-2', {x: 20, z: 2});
   assert.equal(system.obstruction(), null);
   assert.equal(state.robot.motionState, 'waiting', 'dispersal alone does not restart the robot');
   assert.ok(traverse(context).elapsed > 0);
@@ -173,7 +173,7 @@ test('a crowd over the next segment makes the robot wait, and retry works once i
 
 test('a crowd away from the next segment does not block it', () => {
   const {system} = setup('crowd');
-  ['P-1', 'P-2', 'P-3'].forEach((id, i) => system.place(id, {x: -8 + 2 * i, z: 16}));
+  ['P-1', 'P-2', 'P-3'].forEach((id, i) => system.place(id, {x: 16 + 2 * i, z: 2}));
   system.tick(STEP);
   assert.equal(system.snapshot().crowds.length, 1);
   assert.equal(system.obstruction(), null);
@@ -184,7 +184,7 @@ test('forming a crowd is logged once until it dissolves and forms again', () => 
   const count = () => messages(model).filter(text => text.startsWith('Crowd of 3')).length;
   system.tick(STEP); system.tick(STEP);
   assert.equal(count(), 1);
-  system.place('P-2', {x: 20, z: 12});
+  system.place('P-2', {x: 20, z: 2});
   system.tick(STEP);
   system.place('P-2', {x: -4, z: 10});
   assert.equal(system.tick(STEP).changed, true);
@@ -213,8 +213,8 @@ test('the obstruction check only looks at the next segment and stops after the r
   assert.equal(system.obstruction(), null, 'on S2 while S1 is next');
   traverse(context);
   assert.match(system.obstruction(), /occupied by P-1/);
-  system.place('P-1', {x: 20, z: 12});
-  system.place('RC-1', {x: 20, z: 14});
+  system.place('P-1', {x: 20, z: 2});
+  system.place('RC-1', {x: 20, z: 4});
   while (state.nextIndex < state.segments.length) traverse(context);
   assert.equal(system.obstruction(), null);
 });
@@ -233,7 +233,7 @@ test('a cone adjacent to the robot warns and slows it, and speed recovers afterw
   model.pickup();
   assert.equal(system.speedFactor(), 1);
   const free = setup('street');
-  free.system.place('P-1', {x: 20, z: 12});
+  free.system.place('P-1', {x: 20, z: 2});
   free.model.pickup();
   const baseline = traverse(free).elapsed;
   const slowed = traverse(context).elapsed;
@@ -314,8 +314,8 @@ test('a recipient does not deliver a package the robot is not carrying', () => {
 test('an open cell between recipient and destination means no handoff', () => {
   const context = setup('street');
   const {model, system, state} = context;
-  system.place('RC-1', {x: 14, z: -10});
-  assert.ok(isOccupiable(toCell({x: 12, z: -10})), 'the gap is open');
+  system.place('RC-1', {x: 10, z: -14});
+  assert.ok(isOccupiable(toCell({x: 10, z: -12})), 'the gap is open');
   model.pickup();
   while (state.nextIndex < state.segments.length) traverse(context);
   assert.equal(state.package.deliveryStatus, 'in transit');
@@ -324,11 +324,11 @@ test('an open cell between recipient and destination means no handoff', () => {
 test('a recipient across a building counts as adjacent for the handoff', () => {
   const {model, system, state} = setup('street');
   model.pickup();
-  const across = {x: 12, z: 8};
+  const across = {x: 4, z: -2};
   state.package.destination = {...across};
   state.robot.position = {...across};
   state.package.position = {...across};
-  system.place('RC-1', {x: 20, z: 8});
+  system.place('RC-1', {x: 4, z: 6});
   system.tick(STEP);
   assert.equal(state.package.deliveryStatus, 'delivered');
 });
@@ -349,7 +349,7 @@ test('the robot reports toward while it closes on its next referent, with a live
   const context = setup('street');
   const {model, system} = context;
   system.place('P-1', {x: -2, z: 10});
-  system.place('RC-1', {x: 20, z: 12});
+  system.place('RC-1', {x: 20, z: 2});
   model.pickup();
   model.move(system.obstruction());
   const kinds = new Set();
@@ -394,8 +394,8 @@ test('placing occupants never touches delivery state', () => {
   const {system, state} = setup('street');
   const keys = ['robot', 'package', 'segments', 'nextIndex', 'distance'];
   const before = structuredClone(keys.map(key => state[key]));
-  system.place('P-1', {x: 20, z: 12});
-  system.add('cone', {x: 20, z: 14});
+  system.place('P-1', {x: 20, z: 2});
+  system.add('cone', {x: 20, z: 4});
   system.remove('W-1');
   system.tick(STEP);
   assert.deepEqual(keys.map(key => state[key]), before);

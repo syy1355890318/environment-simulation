@@ -2,9 +2,11 @@
 import * as THREE from './vendor/three.module.js';
 import {snapToCell} from './spatial.js';
 
+// Black, white, and gray, with one blue. Conditions are told apart by shape and label.
+const BLUE = 0x1f33c4, GRAY = 0x8a8a8a, INK = 0x141414;
 export const INDICATOR_COLORS = {
-  adjacent: 0x2f8f6b, adjacentObstacle: 0x12806f, between: 0x3f6fb5, among: 0x8a4fb0, crowd: 0xc8503c, warning: 0xe09a1e,
-  toward: 0x2f9e5f, away: 0xd2703a, past: 0x3b7f9c, into: 0x2f9e5f, out: 0xd2703a, zone: 0xcfcec6, still: 0xb9b8b0
+  adjacent: BLUE, adjacentObstacle: BLUE, between: BLUE, among: BLUE, crowd: BLUE, warning: BLUE,
+  toward: BLUE, away: GRAY, past: INK, into: BLUE, out: GRAY, zone: 0xcccccc, still: 0xbdbdbd
 };
 const OVERLAY_Y = 0.3, TRAIL_POINTS = 60, PIN_LIFETIME = 4000, FLASH_LIFETIME = 1500;
 
@@ -51,15 +53,15 @@ function occupantFigure(type) {
     return mesh;
   };
   if (type === 'cone') {
-    add(new THREE.BoxGeometry(1.1, 0.08, 1.1), mat(0x4a4f45), 0.1);
-    add(new THREE.ConeGeometry(0.46, 1.25, 20), mat(0xe0921c), 0.76);
-    add(new THREE.CylinderGeometry(0.2, 0.3, 0.2, 20), mat(0xf8f4e7), 0.72);
+    add(new THREE.BoxGeometry(1.1, 0.08, 1.1), mat(INK), 0.1);
+    add(new THREE.ConeGeometry(0.46, 1.25, 20), mat(INK), 0.76);
+    add(new THREE.CylinderGeometry(0.2, 0.3, 0.2, 20), mat(0xffffff), 0.72);
   } else {
-    const body = type === 'recipient' ? 0x1d9e75 : 0x55554f;
+    const body = type === 'recipient' ? BLUE : 0x4d4d4d;
     add(new THREE.CylinderGeometry(0.26, 0.36, 1.15, 16), mat(body), 0.68);
-    add(new THREE.SphereGeometry(0.27, 16, 12), mat(0xe9e6df), 1.52);
+    add(new THREE.SphereGeometry(0.27, 16, 12), mat(0xffffff), 1.52);
     if (type === 'recipient') {
-      const halo = add(new THREE.TorusGeometry(0.58, 0.05, 8, 32), mat(0x1d9e75), 0.14);
+      const halo = add(new THREE.TorusGeometry(0.58, 0.05, 8, 32), mat(BLUE), 0.14);
       halo.rotation.x = Math.PI / 2;
     }
   }
@@ -77,7 +79,7 @@ export function createSpatialOverlay(scene, labelHost, placeLabel) {
   const warningMaterial = basic(INDICATOR_COLORS.warning), crowdMaterial = basic(INDICATOR_COLORS.crowd, 0.8);
   const crowdFill = basic(INDICATOR_COLORS.crowd, 0.12), squareMaterial = basic(INDICATOR_COLORS.adjacent, 0.22);
   const squareObstacleMaterial = basic(INDICATOR_COLORS.adjacentObstacle, 0.22), amongFill = basic(INDICATOR_COLORS.among, 0.2);
-  const invalidMaterial = new THREE.MeshStandardMaterial({color: 0xc8503c});
+  const invalidMaterial = new THREE.MeshStandardMaterial({color: 0xb5b5b5, transparent: true, opacity: .55});
   let staticKey = '', dragPreview = null, labelCount = 0;
 
   function label(text, kind, position, height = 0.3, offset = 0) {

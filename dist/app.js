@@ -4,9 +4,18 @@ import {createInspector} from './inspector.js';
 import {createSpatialSystem, OCCUPANT_TYPES} from './behaviors.js';
 import {nextStep} from './next-step.js';
 
-let model = createDeliveryModel(), state = model.state, world;
+// Delivery is switched off for now. Open the page with ?delivery to bring it back.
+const DELIVERY = new URLSearchParams(location.search).has('delivery');
+document.body.classList.toggle('no-delivery', !DELIVERY);
+function createModel() {
+  const created = createDeliveryModel();
+  created.state.delivery = DELIVERY;
+  return created;
+}
+let model = createModel(), state = model.state, world;
 const spatial = createSpatialSystem(() => model);
-spatial.loadScene('street');
+const scenes = spatial.SCENES.filter(scene => DELIVERY || !scene.delivery);
+spatial.loadScene(DELIVERY ? 'street' : 'city');
 const $ = id => document.getElementById(id);
 const escape = text => String(text).replace(/[&<>"']/g, character => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[character]));
 
@@ -21,6 +30,7 @@ function notify(message) {
 const inspector = createInspector({getModel: () => model, getWorld: () => world, spatial, notify, onChange: () => render()});
 
 function renderNext() {
+  if (!DELIVERY) return;
   const step = nextStep(state, spatial.obstruction());
   const fills = state.segments.map((_, index) => {
     const fill = index < state.nextIndex ? 1 : index === state.nextIndex && state.movement ? state.movement.progress : 0;
@@ -48,6 +58,7 @@ function render() {
 }
 
 function act(name) {
+  if (!DELIVERY) return null;
   try {
     const result = name === 'move' ? model.move(spatial.obstruction()) : model[name]();
     announced = state.history.length;
@@ -62,7 +73,7 @@ function act(name) {
 
 function reset() {
   if (state.movement) { notify('Finish the current movement first.'); return; }
-  model = createDeliveryModel();
+  model = createModel();
   state = model.state;
   announced = state.history.length;
   spatial.reset();
@@ -78,7 +89,7 @@ $('next-action').onclick = () => {
 };
 $('wait').onclick = () => { try { act('wait'); } catch {} };
 
-$('scene-select').innerHTML = spatial.SCENES.map(scene => `<option value="${scene.id}">${escape(scene.name)}</option>`).join('');
+$('scene-select').innerHTML = scenes.map(scene => `<option value="${scene.id}">${escape(scene.name)}</option>`).join('');
 $('scene-select').value = spatial.sceneId();
 $('scene-select').onchange = () => {
   try {
@@ -115,6 +126,7 @@ $('add-menu').onclick = event => {
   try {
     const occupant = spatial.add(type, spatial.firstOpenCell());
     inspector.show({kind: 'object', id: occupant.id});
+    world?.centerOn(occupant.position);
     render();
   } catch (error) { notify(error.message); }
 };
@@ -175,8 +187,8 @@ function frame(now) {
 requestAnimationFrame(frame);
 
 $('reset').onclick = () => { closeMenus(); reset(); };
-$('zoom-out').onclick = () => world?.zoom(-.12);
-$('zoom-in').onclick = () => world?.zoom(.12);
+$('zoom-out').onclick = () => world?.zoomBy(.8);
+$('zoom-in').onclick = () => world?.zoomBy(1.25);
 $('view-reset').onclick = () => world?.resetView();
 $('view-top').onclick = () => world?.toggleTop();
 
@@ -187,25 +199,29 @@ function showDialog(html) {
 }
 $('close-dialog').onclick = () => $('info-dialog').close();
 $('info-dialog').addEventListener('click', event => { if (event.target === $('info-dialog')) $('info-dialog').close(); });
-$('rules').onclick = () => showDialog(`<h2>How it works</h2><ol class="rules-list">
+const deliveryRules = `
   <li>Pick up the package, move along the route one segment at a time, then deliver. Keys <strong>1–4</strong> are pick up, move, wait, and deliver.</li>
   <li>A segment must be open and <strong>wider than the robot</strong>. If not, the robot waits; fix it and press Move again.</li>
-  <li><strong>Adjacent</strong> means no open grid cell between two objects, so a building can make them adjacent.</li>
-  <li><strong>Between</strong> means on the straight line joining two others. <strong>Among</strong> means inside the outline of three or more others.</li>
   <li>A person or cone on the next segment, or a crowd of three or more over it, makes the robot wait.</li>
   <li>A <strong>cone</strong> next to the robot slows it. A <strong>recipient</strong> next to the robot at the destination takes the package automatically; otherwise press Deliver.</li>
-  <li>Click anything on the map to inspect or edit it. Drag people and cones to move them. Drag the ground to orbit.</li>
+`;
+$('rules').onclick = () => showDialog(`<h2>How it works</h2><ol class="rules-list">
+  <li>Drag the map to move around and scroll to zoom. Hold <strong>Shift</strong> or the right button and drag to turn the view.</li>
+  <li>Add people and cones with <strong>+</strong>, then drag them. Click one, or any spot on the ground, to inspect it.</li>
+  <li><strong>Adjacent</strong> means no open grid cell between two objects, so a building can make them adjacent.</li>
+  <li><strong>Between</strong> means on the straight line joining two others. <strong>Among</strong> means inside the outline of three or more others.</li>
+  <li>Three or more people close together form a <strong>crowd</strong>.</li>${DELIVERY ? deliveryRules : ''}
 </ol>`);
 $('activity-button').onclick = () => showDialog(`<h2>Activity</h2><ul class="activity-list">${[...state.history].reverse().map(entry => `<li class="${entry.kind}">${escape(entry.message)}</li>`).join('')}</ul>`);
 
 document.addEventListener('keydown', event => {
   if (event.key === 'Escape') { closeMenus(); if (!$('info-dialog').open) inspector.hide(); return; }
-  if ($('info-dialog').open || ['INPUT', 'SELECT', 'TEXTAREA'].includes(document.activeElement.tagName)) return;
+  if (!DELIVERY || $('info-dialog').open || ['INPUT', 'SELECT', 'TEXTAREA'].includes(document.activeElement.tagName)) return;
   const action = {'1': 'pickup', '2': 'move', '3': 'wait', '4': 'deliver'}[event.key];
   if (action) { event.preventDefault(); try { act(action); } catch {} }
 });
 
-if (document.modelContext?.registerTool) {
+if (DELIVERY && document.modelContext?.registerTool) {
   const lifecycle = new AbortController();
   window.addEventListener('pagehide', () => lifecycle.abort(), {once: true});
   const entries = [

@@ -25,10 +25,10 @@ test('every route node and route cell is occupiable', () => {
 
 test('building footprints and off-map cells are not occupiable; open ground is', () => {
   for (const b of BUILDINGS) assert.equal(isOccupiable(toCell({x: b.x, z: b.z})), false, `${b.x},${b.z}`);
-  assert.equal(isOccupiable(toCell({x: 24, z: 0})), false);
-  assert.equal(isOccupiable(toCell({x: 0, z: 20})), false);
-  assert.equal(isOccupiable(toCell({x: 22, z: 18})), true);
-  assert.equal(isOccupiable(toCell({x: 12, z: 8})), true);
+  assert.equal(isOccupiable(toCell({x: 48, z: 0})), false);
+  assert.equal(isOccupiable(toCell({x: 0, z: 36})), false);
+  assert.equal(isOccupiable(toCell({x: 22, z: 2})), true, 'the plaza');
+  assert.equal(isOccupiable(toCell({x: 12, z: 8})), true, 'Market Street');
 });
 
 test('cells between two cells are symmetric and exclude the endpoints', () => {
@@ -40,14 +40,15 @@ test('cells between two cells are symmetric and exclude the endpoints', () => {
 });
 
 test('adjacent means no occupiable cell between, orthogonally or diagonally', () => {
-  assert.deepEqual(pairs([entity('A', 20, -6), entity('B', 20, -8)]), ['A-B']);
-  assert.deepEqual(pairs([entity('A', 20, -6), entity('B', 22, -8)]), ['A-B']);
-  assert.deepEqual(pairs([entity('A', 20, -6), entity('B', 20, -10)]), [], 'one open cell separates them');
+  assert.deepEqual(pairs([entity('A', 20, 0), entity('B', 20, 2)]), ['A-B']);
+  assert.deepEqual(pairs([entity('A', 20, 0), entity('B', 22, 2)]), ['A-B']);
+  assert.deepEqual(pairs([entity('A', 20, 0), entity('B', 20, 4)]), [], 'one open cell separates them');
 });
 
 test('adjacent does not depend on argument order', () => {
-  const a = entity('A', 12, 8), b = entity('B', 20, 8);
-  assert.equal(findAdjacent([a, b]).length, findAdjacent([b, a]).length);
+  const a = entity('A', 4, -2), b = entity('B', 4, 6);
+  assert.equal(findAdjacent([a, b]).length, 1);
+  assert.equal(findAdjacent([b, a]).length, 1);
 });
 
 test('objects sharing a cell are co-located, not adjacent', () => {
@@ -56,22 +57,22 @@ test('objects sharing a cell are co-located, not adjacent', () => {
 });
 
 test('a building between two objects makes them adjacent, marked as across an obstacle', () => {
-  const [pair] = findAdjacent([entity('A', 12, 8), entity('B', 20, 8)]);
+  const [pair] = findAdjacent([entity('A', 4, -2), entity('B', 4, 6)]);
   assert.equal(pair.acrossObstacle, true);
-  assert.equal(findAdjacent([entity('A', 20, -6), entity('B', 20, -8)])[0].acrossObstacle, false);
+  assert.equal(findAdjacent([entity('A', 20, 0), entity('B', 20, 2)])[0].acrossObstacle, false);
 });
 
 test('an open cell beside a building keeps objects non-adjacent', () => {
-  assert.deepEqual(pairs([entity('A', 10, 8), entity('B', 20, 8)]), [], '(12, 8) is open');
+  assert.deepEqual(pairs([entity('A', 4, -2), entity('B', 4, 8)]), [], '(4, 6) is open');
 });
 
 test('an occupied cell is still occupiable, so the outer objects are not adjacent', () => {
-  assert.deepEqual(pairs([entity('A', 20, -6), entity('M', 20, -8), entity('C', 20, -10)]).sort(), ['A-M', 'M-C']);
+  assert.deepEqual(pairs([entity('A', 20, 0), entity('M', 20, 2), entity('C', 20, 4)]).sort(), ['A-M', 'M-C']);
 });
 
 test('moving objects are judged by the cell they currently occupy', () => {
-  assert.deepEqual(pairs([entity('A', 20.9, -5.1), entity('B', 20, -8)]), ['A-B'], 'A rounds to (20, -6)');
-  assert.deepEqual(pairs([entity('A', 20.9, -4.9), entity('B', 20, -8)]), [], 'A rounds to (20, -4)');
+  assert.deepEqual(pairs([entity('A', 20.9, 2.9), entity('B', 20, 0)]), ['A-B'], 'A rounds to (20, 2)');
+  assert.deepEqual(pairs([entity('A', 20.9, 3.1), entity('B', 20, 0)]), [], 'A rounds to (20, 4)');
 });
 
 test('between requires the middle on the straight line between the outer objects', () => {

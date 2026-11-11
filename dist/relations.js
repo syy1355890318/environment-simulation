@@ -10,10 +10,13 @@ const CROWD_MARGIN = 1.2;
 const PEOPLE = ['person', 'recipient'];
 
 // Carried packages travel with the robot and are not separate objects on the ground.
+// With delivery switched off, the robot and package are not on the map at all.
 export function entitiesFrom(state) {
+  const occupants = (state.occupants || []).map(({id, type, position}) => ({id, type, position}));
+  if (state.delivery === false) return occupants;
   const entities = [{id: state.robot.id, type: 'robot', position: state.robot.position}];
   if (!state.package.carriedBy) entities.push({id: state.package.id, type: 'package', position: state.package.position});
-  return entities.concat((state.occupants || []).map(({id, type, position}) => ({id, type, position})));
+  return entities.concat(occupants);
 }
 
 // Adjacent: distinct cells with no occupiable location between them. An occupied cell

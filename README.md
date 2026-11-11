@@ -1,6 +1,8 @@
-# Parcel — Robot Delivery Lab
+# Parcel
 
-A build-free single-page application written in vanilla JavaScript with a full-window Three.js urban scene. One robot carries one package along a fixed, directed four-segment route totaling 40 meters.
+A build-free single-page application written in vanilla JavaScript with a full-window Three.js city. The city is 96 × 72 m: eight streets and four alleys between blocks of buildings, a plaza, a park, five exhibits, and two chargers. People and cones can be placed on it, and their positions and movement are detected and shown.
+
+The original robot delivery is **switched off for now**. Its code and tests are kept; open the page with `?delivery` at the end of the address to bring it back.
 
 ## Run
 
@@ -18,23 +20,27 @@ Wait for **Deploy Robot Delivery to GitHub Pages** to finish in the **Actions** 
 
 ## Operate
 
-The bar at the bottom always shows the next step and one button: **Pick up**, **Move**, **Deliver**, or **Start over**. The pause button waits in place. Keys 1–4 are pick up, move, wait, and deliver.
+Drag the map to move around and scroll or pinch to zoom. Hold Shift or the right mouse button and drag to turn the view; on a touch screen, twist with two fingers. The buttons at the top right zoom, switch to an overhead view, and reset the camera.
 
-Click anything on the map to open its card: the robot and package for their specifications, a path to change its clear width or block it, a person or cone to place or remove it, or empty ground to see what is there. Click empty ground or press Escape to close the card. Drag people and cones to move them, and drag the ground to orbit.
+Add a person, recipient, or cone with **＋**, then drag it. Click one to place it by coordinates or remove it. Click the ground to see what is there, and click the ground again or press Escape to close the card. State is in memory and resets on reload. **Reset** and the activity log are in the ⋯ menu.
 
-Blocked and too-narrow moves leave the robot waiting in place. Clear width must be **strictly greater** than robot width. Restore the passage, then press Move again; the robot never reroutes itself. Package weight, robot width, and capacity are editable before pickup. State is in memory and resets on reload. **Reset** and the activity log are in the ⋯ menu.
+## The city
+
+Blocks sit on a grid of columns and rows, and streets are the gaps between them. Main streets are 6 m wide (three cells); alleys are 2 m wide (one cell). Mill Lane and Baker Yard run to the edge of the map and stop, and each has a charger. The plaza and park are open ground. Everything else inside a block is building. `dist/city.js` is the single source for blocks, streets, and places.
 
 ## Find
 
-The search box takes `pickup`, `destination`, a junction, a path name, `halfway along Garden Passage`, `50% along S2`, `6 m along Garden Passage`, coordinates such as `-2, 2`, or an object such as `robot`, `PKG-001`, or `P-1`. Ambiguous terms list their candidates; unknown descriptions do not invent a location. East is `+x` and north is `−z`.
+The search box takes a place such as `Fountain`, a street such as `Market Street`, coordinates such as `20, 2`, or an occupant such as `P-1`. The map centers on the result. Partial names that match several things list the candidates; unknown names do not invent a location. East is `+x` and north is `−z`.
 
-A place card lists who is within the search radius (default 0.5 m, boundary included). Under **Options**, measure from World or Pickup, and change the radius. World `(-2, -4)` is `(10, -12)` from pickup. Finding things never changes delivery state.
+A place card lists who is within the search radius (default 0.5 m, boundary included), which can be changed under **Options**.
+
+With `?delivery`, search also takes `pickup`, `destination`, `halfway along Garden Passage`, `50% along S2`, and `robot`, and the bar at the bottom shows the next delivery step: **Pick up**, **Move**, **Deliver**, or **Start over**. Keys 1–4 are pick up, move, wait, and deliver. A segment must be unblocked and strictly wider than the robot, or the robot waits in place.
 
 ## Position and movement
 
-Choose a scene from the menu at the top: **Street**, **Relations**, **Crowd**, **Warning**, or **Movement**. Add people, recipients, and cones with **＋**. Indicators appear on the map as conditions are met.
+Choose a scene from the menu at the top: **City** (empty), **Relations**, or **Movement**. With `?delivery` there are also **Street**, **Crowd**, and **Warning**. Indicators appear on the map as conditions are met.
 
-The ground is a grid of 2 m cells centered on even coordinates. A cell is occupiable unless it is off the map or inside a building. Moving objects are judged by the cell they currently occupy. A package being carried is not a separate object.
+The ground is a grid of 2 m cells centered on even coordinates. A cell is occupiable unless it is off the map or inside a building; the grid is drawn only where something can stand. Moving objects are judged by the cell they currently occupy. A package being carried is not a separate object.
 
 | Position | Condition | Indicator |
 |---|---|---|
@@ -60,10 +66,10 @@ The ground is a grid of 2 m cells centered on even coordinates. A cell is occupi
 - `dist/model.js` owns the robot, package, route, bidirectional carrying relationship, traversal, and action validation.
 - `dist/locations.js` derives landmarks, descriptions, occupancy, reference frames, and description resolution from model state.
 - `dist/inspector.js` renders the selection card and resolves searches. `dist/next-step.js` decides the single next step.
-- `dist/spatial.js` defines the occupiable grid and building footprints; `dist/relations.js` detects position relations and crowds; `dist/movement.js` reads movement from position history.
+- `dist/city.js` defines the blocks, streets, and places. `dist/spatial.js` defines the occupiable grid; `dist/relations.js` detects position relations and crowds; `dist/movement.js` reads movement from position history.
 - `dist/behaviors.js` holds occupants, scenes, and the responses to placement. `dist/spatial-overlay.js` draws the figures and indicators.
 - `dist/projection.js` shares the world-to-screen and screen-to-ground transforms.
-- `dist/scene.js` renders geometry, moving entities, route states, and camera controls.
+- `dist/scene.js` renders the city and handles panning, zooming, turning, and picking. `dist/delivery-layer.js` draws the robot, package, and route when delivery is on.
 - `dist/app.js` connects the top bar, next-step bar, menus, dialogs, and optional WebMCP browser actions to the same model.
 - `dist/index.html` and `dist/style.css` define the accessible interface.
 
@@ -75,6 +81,6 @@ Coordinates use the horizontal x and z axes, in meters. Movement only starts at 
 node --test tests/*.test.js
 ```
 
-Nineteen tests cover the nine original delivery-rule cases plus location frames, co-location and ownership, occupancy boundaries, landmark/segment distinctions, ambiguous descriptions, and camera/viewport projection round trips.
+The tests cover the city plan, position relations, movement, behaviors, and the nine original delivery-rule cases plus location frames, co-location and ownership, occupancy boundaries, landmark/segment distinctions, ambiguous descriptions, and camera/viewport projection round trips.
 
 The optional WebMCP tools expose read, pickup, move, wait, deliver, and stationary passage editing in supporting browsers. All use the visible interface’s shared model.

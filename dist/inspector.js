@@ -1,5 +1,5 @@
 // The single card that opens when something is selected.
-import {describePosition, fromFrame, objectLocation, occupantsAt, parseCoordinates, resolveDescription, segmentsAt, toFrame} from './locations.js';
+import {describeCityPosition, describePosition, findInCity, fromFrame, objectLocation, occupantsAt, parseCoordinates, resolveDescription, segmentsAt, toFrame} from './locations.js';
 import {OCCUPANT_TYPES} from './behaviors.js';
 
 const escape = value => String(value).replace(/[&<>"']/g, character => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[character]));
@@ -12,6 +12,7 @@ const capitalized = text => text[0].toUpperCase() + text.slice(1);
 export function createInspector({getModel, getWorld, spatial, notify, onChange}) {
   const card = document.getElementById('inspector');
   const state = () => getModel().state;
+  const delivery = () => state().delivery !== false;
   let selection = null, frame = 'world', radius = 0.5, optionsOpen = false;
 
   const format = position => {
@@ -60,14 +61,15 @@ export function createInspector({getModel, getWorld, spatial, notify, onChange})
 
   function placeBody(result) {
     const here = occupantsAt(state(), result.position, radius);
-    const paths = segmentsAt(state(), result.position).map(segment => segment.name);
+    const paths = delivery() ? segmentsAt(state(), result.position).map(segment => segment.name) : [];
+    const lede = result.kind === 'segment' ? `${number(result.length)} m long` : delivery() ? describePosition(state(), result.position) : describeCityPosition(result.position);
     const within = here.length
       ? `<ul class="links">${here.map(item => `<li><button data-open="${escape(item.id)}">${escape(item.name)}</button></li>`).join('')}</ul>`
       : '<p class="hint">Nobody here.</p>';
-    return `<p class="lede">${escape(result.kind === 'segment' ? `Whole ${number(result.length)} m path` : describePosition(state(), result.position))}</p>` +
+    return `<p class="lede">${escape(lede)}</p>` +
       row('Position', format(result.position)) + (paths.length ? row('On', escape(paths.join(', '))) : '') + within +
       `<details class="options" ${optionsOpen ? 'open' : ''}><summary>Options</summary>` +
-      `<div class="row"><dt><label for="field-frame">Measured from</label></dt><dd><select id="field-frame" data-field="frame"><option value="world" ${frame === 'world' ? 'selected' : ''}>World</option><option value="pickup" ${frame === 'pickup' ? 'selected' : ''}>Pickup</option></select></dd></div>` +
+      (!delivery() ? '' : `<div class="row"><dt><label for="field-frame">Measured from</label></dt><dd><select id="field-frame" data-field="frame"><option value="world" ${frame === 'world' ? 'selected' : ''}>World</option><option value="pickup" ${frame === 'pickup' ? 'selected' : ''}>Pickup</option></select></dd></div>`) +
       field('Search radius (m)', 'radius', radius, 'min="0"') + '</details>';
   }
 
@@ -119,19 +121,22 @@ export function createInspector({getModel, getWorld, spatial, notify, onChange})
   function find(text) {
     const typed = parseCoordinates(text);
     if (typed) {
-      show({kind: 'place', result: {kind: 'point', name: 'Location', position: fromFrame(state(), typed, frame)}});
+      const position = fromFrame(state(), typed, frame);
+      show({kind: 'place', result: {kind: 'point', name: 'Location', position}});
+      getWorld()?.centerOn(position);
       return {kind: 'found'};
     }
     const id = state().occupants.find(item => item.id.toLowerCase() === text.trim().toLowerCase())?.id;
-    if (id) { show({kind: 'object', id}); return {kind: 'found'}; }
-    const result = resolveDescription(state(), text);
+    if (id) { show({kind: 'object', id}); getWorld()?.centerOn(objectLocation(state(), id).position); return {kind: 'found'}; }
+    const result = delivery() ? resolveDescription(state(), text) : findInCity(text);
     if (result.kind === 'error' || result.kind === 'candidates') return result;
     showResult(result);
     return {kind: 'found'};
   }
   function showResult(result) {
-    const objects = [state().robot.id, state().package.id, ...state().segments.map(item => item.id)];
+    const objects = delivery() ? [state().robot.id, state().package.id, ...state().segments.map(item => item.id)] : [];
     show(objects.includes(result.id) ? {kind: 'object', id: result.id} : {kind: 'place', result});
+    getWorld()?.centerOn(result.position);
   }
 
   function apply(input) {
