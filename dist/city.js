@@ -49,5 +49,12 @@ export const PLACES = [
   place('Clock Tower', 'exhibit', -40, -22), place('Lighthouse', 'exhibit', 28, -30),
   place('Mural', 'exhibit', 40, 8), place('Greenhouse', 'exhibit', -30, 30), place('Fountain', 'exhibit', 24, 4),
   place('Charger A', 'charger', -40, -12), place('Charger B', 'charger', 40, 16),
-  place('Plaza', 'plaza', 18, 2), place('Park', 'park', -22, 16)
+  place('Depot', 'depot', 10, 30), place('Plaza', 'plaza', 18, 2), place('Park', 'park', -22, 16)
+];
+
+// Roadworks: ground that can be crossed, but slowly and at a higher energy cost.
+export const HINDRANCES = [
+  {id: 'roadworks-1', name: 'Roadworks', x0: 16, x1: 22, z0: 5, z1: 11},
+  {id: 'roadworks-2', name: 'Roadworks', x0: -5, x1: 1, z0: -18, z1: -14},
+  {id: 'roadworks-3', name: 'Roadworks', x0: -12, x1: -6, z0: 21, z1: 27}
 ];
