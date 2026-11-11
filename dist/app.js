@@ -3,10 +3,24 @@ import {createWorld} from './scene.js';
 import {createInspector} from './inspector.js';
 import {createSpatialSystem, OCCUPANT_TYPES} from './behaviors.js';
 import {nextStep} from './next-step.js';
+import {createAgentSim} from './agent-sim.js';
+import {agentCard, simStatus} from './agent-ui.js';
 
-let model = createDeliveryModel(), state = model.state, world;
+// Delivery is switched off for now. Open the page with ?delivery to bring it back.
+const DELIVERY = new URLSearchParams(location.search).has('delivery');
+document.body.classList.toggle('no-delivery', !DELIVERY);
+function createModel() {
+  const created = createDeliveryModel();
+  created.state.delivery = DELIVERY;
+  return created;
+}
+let model = createModel(), state = model.state, world;
 const spatial = createSpatialSystem(() => model);
-spatial.loadScene('street');
+const EXPLORERS = {id: 'explorers', name: 'Explorers', description: 'Agents explore the city with limited sight. Click one to see what it knows.'};
+const scenes = [EXPLORERS, ...spatial.SCENES.filter(scene => DELIVERY || !scene.delivery)];
+spatial.loadScene(DELIVERY ? 'street' : 'city');
+// The agent simulation runs only in the Explorers scene.
+let sim = null, playing = true, speed = 4, layer = 'none', coneKey = '';
 const $ = id => document.getElementById(id);
 const escape = text => String(text).replace(/[&<>"']/g, character => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[character]));
 
@@ -18,9 +32,11 @@ function notify(message) {
   toastTimer = setTimeout(() => $('toast').classList.remove('visible'), 2600);
 }
 
-const inspector = createInspector({getModel: () => model, getWorld: () => world, spatial, notify, onChange: () => render()});
+const inspector = createInspector({getModel: () => model, getWorld: () => world, spatial, notify, onChange: () => render(),
+  agents: {card: id => sim && agentCard(sim, id), position: id => sim?.agent(id)?.position || null}});
 
 function renderNext() {
+  if (!DELIVERY) return;
   const step = nextStep(state, spatial.obstruction());
   const fills = state.segments.map((_, index) => {
     const fill = index < state.nextIndex ? 1 : index === state.nextIndex && state.movement ? state.movement.progress : 0;
@@ -48,6 +64,7 @@ function render() {
 }
 
 function act(name) {
+  if (!DELIVERY) return null;
   try {
     const result = name === 'move' ? model.move(spatial.obstruction()) : model[name]();
     announced = state.history.length;
@@ -62,12 +79,13 @@ function act(name) {
 
 function reset() {
   if (state.movement) { notify('Finish the current movement first.'); return; }
-  model = createDeliveryModel();
+  model = createModel();
   state = model.state;
   announced = state.history.length;
   spatial.reset();
   inspector.hide();
   nextKey = '';
+  if (sim) startSim();
   render();
 }
 
@@ -78,16 +96,46 @@ $('next-action').onclick = () => {
 };
 $('wait').onclick = () => { try { act('wait'); } catch {} };
 
-$('scene-select').innerHTML = spatial.SCENES.map(scene => `<option value="${scene.id}">${escape(scene.name)}</option>`).join('');
-$('scene-select').value = spatial.sceneId();
+$('scene-select').innerHTML = scenes.map(scene => `<option value="${scene.id}">${escape(scene.name)}</option>`).join('');
+function startSim() {
+  sim = createAgentSim({count: Number($('sim-count').value), seed: 1, useLandmarks: $('sim-landmarks').checked});
+  coneKey = '';
+}
+function chooseScene(id) {
+  const explorers = id === EXPLORERS.id;
+  const scene = explorers ? (spatial.loadScene('city'), EXPLORERS) : spatial.loadScene(id);
+  sim = null;
+  if (explorers) startSim();
+  document.body.classList.toggle('explorers', explorers);
+  $('scene-select').value = id;
+  return scene;
+}
+$('sim-play').onclick = () => { playing = !playing; $('sim-play').textContent = playing ? 'Pause' : 'Play'; };
+$('sim-speed').onclick = () => { speed = {1: 4, 4: 16, 16: 1}[speed]; $('sim-speed').textContent = `${speed}×`; };
+$('sim-count').oninput = () => { $('sim-count-value').textContent = $('sim-count').value; sim?.setCount(Number($('sim-count').value)); };
+$('sim-landmarks').onchange = () => sim?.setLandmarks($('sim-landmarks').checked);
+$('sim-layer').onchange = () => { layer = $('sim-layer').value; if (layer !== 'none') inspector.hide(); };
+// What the 3D view needs to draw the agents, the selected agent's knowledge, and the shared layers.
+function agentView() {
+  if (!sim) return null;
+  const selection = inspector.selection(), chosen = selection?.kind === 'agent' ? sim.agent(selection.id) : null;
+  if (chosen && layer !== 'none') { layer = 'none'; $('sim-layer').value = 'none'; }
+  return {
+    agents: sim.agents.map(agent => ({id: agent.id, type: agent.type, position: agent.position, heading: agent.heading, gate: agent.gate.position})),
+    selectedId: chosen?.id || null,
+    detail: chosen && {cells: chosen.memory.cells, visible: chosen.visible, landmarks: chosen.memory.landmarks, path: chosen.pathAhead()},
+    layer, total: sim.agents.length, visits: sim.visits, shared: sim.sharedKnowledge, heat: sim.landmarkHeat
+  };
+}
+
 $('scene-select').onchange = () => {
   try {
-    const scene = spatial.loadScene($('scene-select').value);
+    const scene = chooseScene($('scene-select').value);
     inspector.hide();
     render();
     notify(scene.description);
   } catch (error) {
-    $('scene-select').value = spatial.sceneId();
+    $('scene-select').value = sim ? EXPLORERS.id : spatial.sceneId();
     notify(error.message);
   }
   $('scene-select').blur();
@@ -115,6 +163,7 @@ $('add-menu').onclick = event => {
   try {
     const occupant = spatial.add(type, spatial.firstOpenCell());
     inspector.show({kind: 'object', id: occupant.id});
+    world?.centerOn(occupant.position);
     render();
   } catch (error) { notify(error.message); }
 };
@@ -153,6 +202,7 @@ try {
     occupants: spatial.occupants,
     placementProblem: spatial.placementProblem,
     click: select,
+    agents: {view: agentView, click: id => { layer = 'none'; $('sim-layer').value = 'none'; inspector.toggleAgent(id); }},
     drop(id, position) {
       try { spatial.place(id, position); render(); } catch (error) { notify(error.message); }
     }
@@ -160,6 +210,7 @@ try {
 } catch {
   $('scene').innerHTML = '<div class="error-overlay">The 3D view needs WebGL. Turn on hardware acceleration or try another browser.</div>';
 }
+chooseScene(DELIVERY ? 'street' : EXPLORERS.id);
 render();
 
 let previous = performance.now(), lastUI = 0;
@@ -167,16 +218,25 @@ function frame(now) {
   const elapsed = now - previous;
   previous = now;
   if (state.movement) model.advance(elapsed * spatial.speedFactor());
+  if (sim) {
+    const cones = JSON.stringify(spatial.occupants().filter(item => item.type === 'cone').map(item => item.position));
+    if (cones !== coneKey) { coneKey = cones; sim.setCones(JSON.parse(cones)); }
+    if (playing) sim.advance(elapsed * speed);
+  }
   const {changed} = spatial.tick(elapsed);
-  if (changed || now - lastUI > 100) { render(); lastUI = now; }
+  if (changed || now - lastUI > 100) {
+    render();
+    if (sim) $('sim-status').textContent = simStatus(sim);
+    lastUI = now;
+  }
   world?.render();
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);
 
 $('reset').onclick = () => { closeMenus(); reset(); };
-$('zoom-out').onclick = () => world?.zoom(-.12);
-$('zoom-in').onclick = () => world?.zoom(.12);
+$('zoom-out').onclick = () => world?.zoomBy(.8);
+$('zoom-in').onclick = () => world?.zoomBy(1.25);
 $('view-reset').onclick = () => world?.resetView();
 $('view-top').onclick = () => world?.toggleTop();
 
@@ -187,25 +247,30 @@ function showDialog(html) {
 }
 $('close-dialog').onclick = () => $('info-dialog').close();
 $('info-dialog').addEventListener('click', event => { if (event.target === $('info-dialog')) $('info-dialog').close(); });
-$('rules').onclick = () => showDialog(`<h2>How it works</h2><ol class="rules-list">
+const deliveryRules = `
   <li>Pick up the package, move along the route one segment at a time, then deliver. Keys <strong>1–4</strong> are pick up, move, wait, and deliver.</li>
   <li>A segment must be open and <strong>wider than the robot</strong>. If not, the robot waits; fix it and press Move again.</li>
-  <li><strong>Adjacent</strong> means no open grid cell between two objects, so a building can make them adjacent.</li>
-  <li><strong>Between</strong> means on the straight line joining two others. <strong>Among</strong> means inside the outline of three or more others.</li>
   <li>A person or cone on the next segment, or a crowd of three or more over it, makes the robot wait.</li>
   <li>A <strong>cone</strong> next to the robot slows it. A <strong>recipient</strong> next to the robot at the destination takes the package automatically; otherwise press Deliver.</li>
-  <li>Click anything on the map to inspect or edit it. Drag people and cones to move them. Drag the ground to orbit.</li>
+`;
+$('rules').onclick = () => showDialog(`<h2>How it works</h2><ol class="rules-list">
+  <li>In <strong>Explorers</strong>, visitors and couriers start knowing nothing. Each sees only a cone ahead that walls block, maps what it sees, and leaves landmarks it uses on later trips. Click one to see its map; use the layer menu to see what they know in common.</li>
+  <li>Drag the map to move around and scroll to zoom. Hold <strong>Shift</strong> or the right button and drag to turn the view.</li>
+  <li>Add people and cones with <strong>+</strong>, then drag them. Click one, or any spot on the ground, to inspect it.</li>
+  <li><strong>Adjacent</strong> means no open grid cell between two objects, so a building can make them adjacent.</li>
+  <li><strong>Between</strong> means on the straight line joining two others. <strong>Among</strong> means inside the outline of three or more others.</li>
+  <li>Three or more people close together form a <strong>crowd</strong>.</li>${DELIVERY ? deliveryRules : ''}
 </ol>`);
 $('activity-button').onclick = () => showDialog(`<h2>Activity</h2><ul class="activity-list">${[...state.history].reverse().map(entry => `<li class="${entry.kind}">${escape(entry.message)}</li>`).join('')}</ul>`);
 
 document.addEventListener('keydown', event => {
   if (event.key === 'Escape') { closeMenus(); if (!$('info-dialog').open) inspector.hide(); return; }
-  if ($('info-dialog').open || ['INPUT', 'SELECT', 'TEXTAREA'].includes(document.activeElement.tagName)) return;
+  if (!DELIVERY || $('info-dialog').open || ['INPUT', 'SELECT', 'TEXTAREA'].includes(document.activeElement.tagName)) return;
   const action = {'1': 'pickup', '2': 'move', '3': 'wait', '4': 'deliver'}[event.key];
   if (action) { event.preventDefault(); try { act(action); } catch {} }
 });
 
-if (document.modelContext?.registerTool) {
+if (DELIVERY && document.modelContext?.registerTool) {
   const lifecycle = new AbortController();
   window.addEventListener('pagehide', () => lifecycle.abort(), {once: true});
   const entries = [

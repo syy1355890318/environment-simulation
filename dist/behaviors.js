@@ -19,24 +19,24 @@ export const OCCUPANT_TYPES = {
 };
 
 export const SCENES = [
-  {id: 'street', name: 'Street', description: 'A person beside the route and a recipient at the destination.', occupants: [
+  {id: 'city', name: 'City', description: 'An empty city. Add people and cones with the plus button.', occupants: []},
+  {id: 'street', delivery: true, name: 'Street', description: 'A person beside the route and a recipient at the destination.', occupants: [
     {type: 'person', x: -6, z: 10}, {type: 'recipient', x: 12, z: -10}
   ]},
   {id: 'relations', name: 'Relations', description: 'Adjacent, adjacent across a building, between, and among.', occupants: [
-    {type: 'person', x: 10, z: 2}, {type: 'person', x: 10, z: 4},
+    {type: 'person', x: 10, z: -12}, {type: 'person', x: 10, z: -14},
     {type: 'person', x: 4, z: -2}, {type: 'person', x: 4, z: 6},
-    {type: 'cone', x: -2, z: -8}, {type: 'person', x: 2, z: -8}, {type: 'cone', x: 6, z: -8},
-    {type: 'cone', x: -8, z: 16}, {type: 'cone', x: 0, z: 16}, {type: 'cone', x: -4, z: 10}, {type: 'person', x: -4, z: 14}
+    {type: 'cone', x: 14, z: 2}, {type: 'person', x: 18, z: 2}, {type: 'cone', x: 22, z: 2},
+    {type: 'cone', x: -26, z: 20}, {type: 'cone', x: -18, z: 20}, {type: 'cone', x: -22, z: 12}, {type: 'person', x: -22, z: 16}
   ]},
-  {id: 'crowd', name: 'Crowd', description: 'Three people on Market Street. Pick up, press Move, then drag one away.', occupants: [
+  {id: 'crowd', delivery: true, name: 'Crowd', description: 'Three people on Market Street. Pick up, press Move, then drag one away.', occupants: [
     {type: 'person', x: -8, z: 10}, {type: 'person', x: -4, z: 10}, {type: 'person', x: 0, z: 10}
   ]},
-  {id: 'warning', name: 'Warning', description: 'A cone beside the route slows the robot while adjacent.', occupants: [
+  {id: 'warning', delivery: true, name: 'Warning', description: 'A cone beside the route slows the robot while adjacent.', occupants: [
     {type: 'cone', x: -8, z: 10}, {type: 'recipient', x: 12, z: -10}
   ]},
   {id: 'movement', name: 'Movement', description: 'A walker goes toward, past, and away from a standing person.', occupants: [
-    {type: 'person', x: -8, z: -6, walk: [{x: -8, z: -6}, {x: 8, z: -6}]}, {type: 'person', x: 2, z: -8},
-    {type: 'recipient', x: 12, z: -10}
+    {type: 'person', x: -8, z: -24, walk: [{x: -8, z: -24}, {x: 8, z: -24}]}, {type: 'person', x: 2, z: -22}
   ]}
 ];
 
@@ -79,8 +79,9 @@ export function createSpatialSystem(getModel) {
     if (!position || !Number.isFinite(position.x) || !Number.isFinite(position.z)) return 'Enter finite x and z coordinates in meters.';
     const cell = toCell(position);
     if (!isOccupiable(cell)) return 'That location is not occupiable. Choose an open cell on the ground.';
-    const {robot, package: parcel, movement, occupants} = state();
+    const {robot, package: parcel, movement, occupants, delivery} = state();
     if (occupants.some(other => other.id !== id && sameCell(toCell(other.position), cell))) return 'Another occupant already stands there.';
+    if (delivery === false) return null;
     if (sameCell(toCell(robot.position), cell)) return 'The robot occupies that location.';
     if (!parcel.carriedBy && sameCell(toCell(parcel.position), cell)) return 'The package occupies that location.';
     if (movement && distanceToSegment(cellCenter(cell), robot.position, movement.end) < ON_PATH) return 'The robot is traversing that location.';
@@ -101,7 +102,7 @@ export function createSpatialSystem(getModel) {
     const cells = [];
     for (let row = -9; row <= 9; row++) for (let col = -11; col <= 11; col++) cells.push(cellCenter({col, row}));
     cells.sort((a, b) => Math.hypot(a.x, a.z) - Math.hypot(b.x, b.z));
-    const open = cells.find(position => !placementProblem(null, position) && !state().segments.some(s => distanceToSegment(position, s.start, s.end) < ON_PATH));
+    const open = cells.find(position => !placementProblem(null, position) && (state().delivery === false || !state().segments.some(s => distanceToSegment(position, s.start, s.end) < ON_PATH)));
     if (!open) throw new Error('No open location remains.');
     return open;
   }
@@ -179,7 +180,7 @@ export function createSpatialSystem(getModel) {
       changed = true;
     }
 
-    const zones = deliveryZones(current);
+    const zones = current.delivery === false ? [] : deliveryZones(current);
     const {trends, events: fresh} = tracker.sample(clock, entitiesFrom(current), zones);
     for (const event of fresh) {
       events.push(event);

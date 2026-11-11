@@ -1,4 +1,7 @@
 // Ground-plane positions in meters are the single source of location truth.
+import {BLOCKS, PLACES, STREETS} from './city.js';
+import {distanceToSegment} from './spatial.js';
+
 const EPSILON = 1e-7;
 const copy = p => ({x: p.x, z: p.z});
 const distance = (a, b) => Math.hypot(a.x - b.x, a.z - b.z);
@@ -100,7 +103,7 @@ export function objectLocation(state, id) {
 export function occupantsAt(state, position, radius = 0.5) {
   const p = validPosition(position);
   if (!Number.isFinite(radius) || radius < 0) throw new Error('Search radius must be a finite number, zero or greater.');
-  return [state.robot.id, state.package.id, ...(state.occupants || []).map(item => item.id)].map(id => objectLocation(state, id))
+  return [...(state.delivery === false ? [] : [state.robot.id, state.package.id]), ...(state.occupants || []).map(item => item.id)].map(id => objectLocation(state, id))
     .map(object => ({...object, distance: distance(p, object.position)}))
     .filter(object => object.distance <= radius + EPSILON);
 }
@@ -137,4 +140,35 @@ export function resolveDescription(state, description) {
   if (candidates.length === 1) return candidates[0];
   if (candidates.length > 1) return {kind: 'candidates', candidates, message: 'Several places match. Choose a specific location below.'};
   return {kind: 'error', message: 'Unknown description. Try “pickup”, “halfway along Garden Passage”, or “6 m along Garden Passage”.'};
+}
+
+const streetsAt = position => STREETS.filter(street => distanceToSegment(position, street.start, street.end) <= street.width / 2 + EPSILON);
+const streetResult = street => ({kind: 'segment', id: street.id, name: street.name, start: copy(street.start), end: copy(street.end),
+  position: {x: (street.start.x + street.end.x) / 2, z: (street.start.z + street.end.z) / 2}, length: distance(street.start, street.end)});
+
+// Where a point is in the city: a named place, a street or junction, an open space, or the nearest place.
+export function describeCityPosition(position) {
+  const p = validPosition(position);
+  const here = PLACES.find(item => distance(item.position, p) <= 1);
+  if (here) return `At ${here.name}`;
+  const streets = streetsAt(p);
+  if (streets.length > 1) return `${streets[0].name} and ${streets[1].name} junction`;
+  if (streets.length === 1) return `On ${streets[0].name}`;
+  const open = BLOCKS.find(item => item.kind !== 'building' && p.x >= item.x0 && p.x <= item.x1 && p.z >= item.z0 && p.z <= item.z1);
+  if (open) return `In the ${open.kind}`;
+  const nearest = PLACES.reduce((best, item) => distance(p, item.position) < distance(p, best.position) ? item : best);
+  return `${number(distance(p, nearest.position))} m from ${nearest.name}`;
+}
+
+// Resolve a typed place or street name. Several partial matches are offered as candidates.
+export function findInCity(text) {
+  const query = normalize(text);
+  if (!query) return {kind: 'error', message: 'Enter a place, a street, or coordinates.'};
+  const all = [...PLACES.map(item => ({kind: 'point', id: item.id, name: item.name, position: copy(item.position)})), ...STREETS.map(streetResult)];
+  const exact = all.find(item => normalize(item.name) === query);
+  if (exact) return exact;
+  const candidates = all.filter(item => normalize(item.name).includes(query));
+  if (candidates.length === 1) return candidates[0];
+  if (candidates.length > 1) return {kind: 'candidates', candidates, message: 'Several places match. Choose one below.'};
+  return {kind: 'error', message: 'Unknown place. Try “Fountain”, “Market Street”, or “20, 2”.'};
 }
