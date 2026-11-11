@@ -2,6 +2,7 @@
 import * as THREE from './vendor/three.module.js';
 import {SIZE} from './city.js';
 import {W, H, UNKNOWN, OBSTACLE, HINDRANCE} from './nav.js';
+import {addSilhouette} from './silhouette.js';
 
 const INK = 0x141414, BLUE = 0x1f33c4;
 const INK_RGB = [20, 20, 20], BLUE_RGB = [31, 51, 196], GRAY_RGB = [120, 120, 120];
@@ -11,6 +12,9 @@ const flatMaterial = (color, opacity = 1) => new THREE.MeshBasicMaterial({color,
 const diamond = new THREE.CircleGeometry(.5, 4).rotateX(-Math.PI / 2);
 const disc = new THREE.CircleGeometry(1, 40).rotateX(-Math.PI / 2);
 const thinRing = new THREE.RingGeometry(.86, 1, 48).rotateX(-Math.PI / 2);
+const pennant = new THREE.BufferGeometry();
+pennant.setAttribute('position', new THREE.Float32BufferAttribute([0, 0, 0, 1.1, -.3, 0, 0, -.6, 0], 3));
+pennant.computeVertexNormals();
 
 function figure(type) {
   const group = new THREE.Group();
@@ -40,7 +44,7 @@ function figure(type) {
   hit.position.y = 1;
   group.add(hit);
   group.userData.normal = group.userData.body.material;
-  return group;
+  return addSilhouette(group);
 }
 
 // `city` lists building meshes with the cells they stand on, and place markers that can be hidden.
@@ -60,6 +64,7 @@ export function createAgentOverlay(scene, labelHost, placeLabel, city) {
   const layer = new THREE.Group();
   scene.add(layer);
   const selectedMaterial = new THREE.MeshStandardMaterial({color: BLUE, roughness: .7});
+  const flagMaterial = new THREE.MeshBasicMaterial({color: BLUE, side: THREE.DoubleSide});
   const pinMaterial = flatMaterial(BLUE), gateMaterial = flatMaterial(INK, .5), haloMaterial = flatMaterial(BLUE, .9);
   const pathLine = new THREE.Line(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({color: BLUE, depthTest: false}));
   pathLine.geometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(PATH_POINTS * 3), 3));
@@ -162,9 +167,17 @@ export function createAgentOverlay(scene, labelHost, placeLabel, city) {
         group.userData.agentId = agent.id;
         scene.add(group);
         figures.set(agent.id, group);
-        const gate = new THREE.Mesh(thinRing, gateMaterial);
-        gate.position.set(agent.gate.x, .2, agent.gate.z);
-        gate.scale.setScalar(.9);
+        // A flagpole marks where this agent came in.
+        const gate = new THREE.Group();
+        gate.position.set(agent.gate.x, 0, agent.gate.z);
+        const ring = new THREE.Mesh(thinRing, gateMaterial);
+        ring.position.y = .2;
+        ring.scale.setScalar(.9);
+        const pole = new THREE.Mesh(new THREE.CylinderGeometry(.05, .05, 3.2, 6), new THREE.MeshStandardMaterial({color: INK}));
+        pole.position.set(.9, 1.6, 0);
+        const flag = new THREE.Mesh(pennant, flagMaterial);
+        flag.position.set(.9, 3.2, 0);
+        gate.add(ring, pole, flag);
         scene.add(gate);
         gates.set(agent.id, gate);
       }

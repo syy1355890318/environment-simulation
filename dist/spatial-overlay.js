@@ -1,6 +1,7 @@
 // Occupant figures and the visual indicators for position and movement conditions.
 import * as THREE from './vendor/three.module.js';
 import {snapToCell} from './spatial.js';
+import {addSilhouette} from './silhouette.js';
 
 // Black, white, and gray, with one blue. Conditions are told apart by shape and label.
 const BLUE = 0x1f33c4, GRAY = 0x8a8a8a, INK = 0x141414;
@@ -69,7 +70,7 @@ function occupantFigure(type) {
   const hit = new THREE.Mesh(new THREE.BoxGeometry(1.5, 2.2, 1.5), new THREE.MeshBasicMaterial({visible: false}));
   hit.position.y = 1;
   group.add(hit);
-  return group;
+  return addSilhouette(group);
 }
 
 export function createSpatialOverlay(scene, labelHost, placeLabel) {

@@ -24,9 +24,20 @@ Drag the map to move around and scroll or pinch to zoom. Hold Shift or the right
 
 Add a person, recipient, or cone with **＋**, then drag it. Click one to place it by coordinates or remove it. Click the ground to see what is there, and click the ground again or press Escape to close the card. State is in memory and resets on reload. **Reset** and the activity log are in the ⋯ menu.
 
-## The city
+## The town
 
-Blocks sit on a grid of columns and rows, and streets are the gaps between them. Main streets are 6 m wide (three cells); alleys are 2 m wide (one cell). Mill Lane and Baker Yard run to the edge of the map and stop, and each has a charger. The plaza and park are open ground. Everything else inside a block is building. `dist/city.js` is the single source for blocks, streets, and places.
+The setting is a small harbor town holding an open-air art walk. Visitors come to see five outdoor exhibits and couriers carry parcels around town. The sea lies to the north and east, with the lighthouse at the end of a pier.
+
+| District | Where | Buildings |
+|---|---|---|
+| Harbor | North | Warehouses with sawtooth and gable roofs |
+| Market | Center and east | Shop-houses of two to four floors with awnings, around the plaza and its fountain |
+| Homes | West | One- and two-floor houses with pitched, patterned roofs, chimneys, and gardens, beside the park |
+| Works | South | Workshops and the parcel depot |
+
+Buildings stand at their real, varied heights, so they can hide what is behind them. Two things keep agents in view: a person or agent hidden by a building shows through it as a flat blue shape, and when an agent is selected the buildings in front of it are reduced to their outlines. The overhead view button shows everything on the ground.
+
+Blocks sit on a grid of columns and rows, and streets are the gaps between them. Main streets are 6 m wide (three cells); alleys are 2 m wide (one cell). Mill Lane and Baker Yard run to the edge of the map and stop, and each has a charger. The plaza and park are open ground. `dist/city.js` is the single source for blocks, streets, and places; `dist/town.js` only decides how they look, so it never changes where anything can walk.
 
 ## Explorers: spatial agents
 
@@ -95,6 +106,7 @@ The ground is a grid of 2 m cells centered on even coordinates. A cell is occupi
 - `dist/behaviors.js` holds occupants, scenes, and the responses to placement. `dist/spatial-overlay.js` draws the figures and indicators.
 - `dist/nav.js` is the 1 m navigation grid. `dist/agent-world.js` is the true city and `dist/perception.js` the only reader of it. `dist/agent-memory.js`, `dist/planner.js`, and `dist/agent.js` are what an agent knows, plans, and does. `dist/agent-sim.js` runs them in fixed 0.1 s steps; `dist/agent-overlay.js` and `dist/agent-ui.js` draw them.
 - `dist/projection.js` shares the world-to-screen and screen-to-ground transforms.
+- `dist/town.js` builds the town's look: lots, roofs, drawn textures, landmarks, sea, and trees. `dist/silhouette.js` lets figures show through buildings.
 - `dist/scene.js` renders the city and handles panning, zooming, turning, and picking. `dist/delivery-layer.js` draws the robot, package, and route when delivery is on.
 - `dist/app.js` connects the top bar, next-step bar, menus, dialogs, and optional WebMCP browser actions to the same model.
 - `dist/index.html` and `dist/style.css` define the accessible interface.
