@@ -39,6 +39,17 @@
   <button id="wait" class="icon-button" aria-label="Wait in place" title="Wait in place"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M6 4v8M10 4v8"/></svg></button>
 </section>
 
+<section class="sim" aria-label="Explorers">
+  <button id="sim-play" class="primary">Pause</button>
+  <button id="sim-speed" class="chip" aria-label="Playback speed">4×</button>
+  <label class="sim-field">Agents <input id="sim-count" type="range" min="2" max="10" step="1" value="4"><output id="sim-count-value" for="sim-count">4</output></label>
+  <label class="sim-field"><input id="sim-landmarks" type="checkbox" checked> Use landmarks</label>
+  <select id="sim-layer" aria-label="Show what agents have in common">
+    <option value="none">No layer</option><option value="paths">All paths</option><option value="landmarks">Landmark heatmap</option><option value="shared">Shared knowledge</option>
+  </select>
+  <span id="sim-status" role="status"></span>
+</section>
+
 <div id="toast" role="status" aria-live="polite"></div>
 <dialog id="info-dialog"><button id="close-dialog" class="icon-button" aria-label="Close"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8"/></svg></button><div id="dialog-content"></div></dialog>
 <script type="module" src="app.js"></script></body></html>

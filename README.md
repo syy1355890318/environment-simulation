@@ -1,6 +1,6 @@
 # Parcel
 
-A build-free single-page application written in vanilla JavaScript with a full-window Three.js city. The city is 96 × 72 m: eight streets and four alleys between blocks of buildings, a plaza, a park, five exhibits, and two chargers. People and cones can be placed on it, and their positions and movement are detected and shown.
+A build-free single-page application written in vanilla JavaScript with a full-window Three.js city. The city is 96 × 72 m: eight streets and four alleys between blocks of buildings, a plaza, a park, five exhibits, two chargers, a depot, and three patches of roadworks. Agents explore it with limited sight, map it, and leave landmarks. People and cones can be placed on it, and their positions and movement are detected and shown.
 
 The original robot delivery is **switched off for now**. Its code and tests are kept; open the page with `?delivery` at the end of the address to bring it back.
 
@@ -28,6 +28,31 @@ Add a person, recipient, or cone with **＋**, then drag it. Click one to place 
 
 Blocks sit on a grid of columns and rows, and streets are the gaps between them. Main streets are 6 m wide (three cells); alleys are 2 m wide (one cell). Mill Lane and Baker Yard run to the edge of the map and stop, and each has a charger. The plaza and park are open ground. Everything else inside a block is building. `dist/city.js` is the single source for blocks, streets, and places.
 
+## Explorers: spatial agents
+
+The **Explorers** scene opens by default. Two kinds of agent enter at the ends of the main streets, knowing nothing about the city.
+
+| | Visitor | Courier |
+|---|---|---|
+| Goal | See all five exhibits, then return to its own gate | Carry parcels from the depot to exhibits |
+| Performance criterion | Each tour in 300 s or less | As little energy as possible; recharge when the battery is low |
+| Speed | 2 m/s | 3 m/s |
+| Slow ground | Costs time, so it is crossed if the detour is long | Costs three times the energy, so it is avoided harder |
+
+How each requirement is met:
+
+- **Limited knowledge.** Each agent has its own memory, empty at the start. Planning and decisions read only that memory; `perception.js` is the one module that reads the true city, and a test checks that the thinking modules never import it.
+- **Cone of vision.** An agent sees 10 m ahead within 100°, plus 1.6 m all around. Buildings block the view. It discovers obstacles (buildings), hindrances (roadworks and cones), and affordances (exhibits, chargers, the depot).
+- **Avoiding others.** Agents steer away from others they see, keep right, slow when one is close ahead, and slide along walls. A stuck agent turns aside and replans.
+- **Mapping.** Every seen cell is recorded on a 1 m grid. With nowhere known to go, an agent walks to the nearest edge of what it has looked at.
+- **Landmarks.** Seeing a place or slow ground leaves a landmark holding what it is, where, when it was found, and the walked distance to other landmarks.
+- **Using landmarks.** On later trips an agent goes straight to its landmarks. Turn off **Use landmarks** and each new trip forgets where things are, though not where the walls are, so it must search again. In the tests a visitor's second tour takes about 210 s with landmarks, against about 390 s for its first and about 330 s without them.
+- **One agent's knowledge.** Click an agent, or type its name such as `V-1` in the search box. Ground it has not seen is veiled, buildings and places it does not know are hidden, what it sees now is blue, and its landmarks and planned path are drawn. Its card shows its goal, performance, and trips.
+- **Many agents.** The slider sets 2 to 10 agents; new ones enter without restarting the others.
+- **What they have in common.** The layer menu shows **All paths** (how often each cell was walked), **Landmark heatmap** (how many agents hold each landmark), and **Shared knowledge** (how many agents know each cell).
+
+Play or pause, and step the speed through 1×, 4×, and 16×. **＋** adds a cone, which slows the cell it stands on. Runs are repeatable: the same settings give the same run. The page must be visible for the simulation to run at full speed.
+
 ## Find
 
 The search box takes a place such as `Fountain`, a street such as `Market Street`, coordinates such as `20, 2`, or an occupant such as `P-1`. The map centers on the result. Partial names that match several things list the candidates; unknown names do not invent a location. East is `+x` and north is `−z`.
@@ -38,7 +63,7 @@ With `?delivery`, search also takes `pickup`, `destination`, `halfway along Gard
 
 ## Position and movement
 
-Choose a scene from the menu at the top: **City** (empty), **Relations**, or **Movement**. With `?delivery` there are also **Street**, **Crowd**, and **Warning**. Indicators appear on the map as conditions are met.
+Choose a scene from the menu at the top: **Explorers**, **City** (empty), **Relations**, or **Movement**. With `?delivery` there are also **Street**, **Crowd**, and **Warning**. Indicators appear on the map as conditions are met.
 
 The ground is a grid of 2 m cells centered on even coordinates. A cell is occupiable unless it is off the map or inside a building; the grid is drawn only where something can stand. Moving objects are judged by the cell they currently occupy. A package being carried is not a separate object.
 
@@ -68,6 +93,7 @@ The ground is a grid of 2 m cells centered on even coordinates. A cell is occupi
 - `dist/inspector.js` renders the selection card and resolves searches. `dist/next-step.js` decides the single next step.
 - `dist/city.js` defines the blocks, streets, and places. `dist/spatial.js` defines the occupiable grid; `dist/relations.js` detects position relations and crowds; `dist/movement.js` reads movement from position history.
 - `dist/behaviors.js` holds occupants, scenes, and the responses to placement. `dist/spatial-overlay.js` draws the figures and indicators.
+- `dist/nav.js` is the 1 m navigation grid. `dist/agent-world.js` is the true city and `dist/perception.js` the only reader of it. `dist/agent-memory.js`, `dist/planner.js`, and `dist/agent.js` are what an agent knows, plans, and does. `dist/agent-sim.js` runs them in fixed 0.1 s steps; `dist/agent-overlay.js` and `dist/agent-ui.js` draw them.
 - `dist/projection.js` shares the world-to-screen and screen-to-ground transforms.
 - `dist/scene.js` renders the city and handles panning, zooming, turning, and picking. `dist/delivery-layer.js` draws the robot, package, and route when delivery is on.
 - `dist/app.js` connects the top bar, next-step bar, menus, dialogs, and optional WebMCP browser actions to the same model.

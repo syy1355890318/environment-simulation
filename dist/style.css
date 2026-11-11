@@ -61,6 +61,21 @@ svg .dot{fill:currentColor;stroke:none}
 .progress i{display:block;width:18px;height:4px;border-radius:2px;background:var(--line);overflow:hidden}
 .progress i b{display:block;height:100%;background:var(--accent)}
 #next-text{overflow:hidden;text-overflow:ellipsis;min-width:0}
+.sim{position:fixed;z-index:5;left:16px;right:16px;bottom:20px;width:fit-content;margin:0 auto;display:none;align-items:center;flex-wrap:wrap;justify-content:center;gap:8px 14px;max-width:calc(100vw - 32px);min-height:52px;padding:8px 14px 8px 8px;background:var(--surface);border-radius:14px;box-shadow:var(--shadow)}
+.explorers .sim{display:flex}
+.explorers [data-add=person],.explorers [data-add=recipient]{display:none}
+.sim .primary{min-width:76px}
+.chip{height:36px;min-width:44px;padding:0 10px;border:1px solid var(--line);border-radius:9px;font-variant-numeric:tabular-nums}
+.chip:hover{border-color:#c4c4c4}
+.sim-field{display:flex;align-items:center;gap:8px;white-space:nowrap}
+.sim-field output{min-width:2ch;font-variant-numeric:tabular-nums}
+.sim input[type=range]{width:96px;accent-color:var(--accent)}
+.sim input[type=checkbox]{width:16px;height:16px;margin:0;accent-color:var(--accent)}
+.sim select{height:36px;padding:0 8px;border:1px solid var(--line);border-radius:9px;background:var(--surface)}
+#sim-status{color:var(--muted);font-size:var(--text-s);font-variant-numeric:tabular-nums;white-space:nowrap}
+.card h3{margin:14px 0 2px;font-size:var(--text-s);font-weight:600;color:var(--muted)}
+.card .hint{margin-top:4px}
+.plain{list-style:none;margin:4px 0 0;padding:0;display:grid;gap:3px;font-size:var(--text-s);font-variant-numeric:tabular-nums}
 .next.warning #next-text{color:var(--accent);font-weight:500}
 .primary{flex:none;height:36px;padding:0 18px;border-radius:9px;background:var(--accent);color:#fff;font-weight:600}
 .primary:hover{background:#18289c}
@@ -92,6 +107,9 @@ dialog strong{color:var(--ink);font-weight:500}
   .card{left:0;right:0;top:auto;bottom:0;width:auto;max-height:55dvh;border-radius:14px 14px 0 0;z-index:6;padding-bottom:24px}
   .view-controls{right:10px;top:58px}
   .next{left:10px;right:10px;bottom:12px;transform:none;max-width:none}
+  .sim{left:10px;right:10px;bottom:12px;width:auto}
+  .sim{justify-content:flex-start}
+  .explorers .card{max-height:42dvh}
   #next-text{flex:1}
   .progress i{width:10px}
   .map-label{font-size:11px}

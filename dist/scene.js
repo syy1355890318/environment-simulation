@@ -1,6 +1,8 @@
 import * as THREE from './vendor/three.module.js';
 import {projectToScreen, groundPointFromScreen} from './projection.js';
-import {SIZE, SIDEWALK, BLOCKS, PLACES} from './city.js';
+import {SIZE, SIDEWALK, BLOCKS, PLACES, HINDRANCES} from './city.js';
+import {indexOf} from './nav.js';
+import {createAgentOverlay} from './agent-overlay.js';
 import {createSpatialOverlay} from './spatial-overlay.js';
 import {createDeliveryLayer} from './delivery-layer.js';
 
@@ -58,6 +60,7 @@ export function createWorld(host, stateProvider, onSelect, onLocate = () => {}, 
   gridGeometry.setAttribute('position', new THREE.Float32BufferAttribute(gridPoints, 3));
   scene.add(new THREE.LineSegments(gridGeometry, new THREE.LineBasicMaterial({color: 0xc8c8c8, transparent: true, opacity: .6})));
 
+  const buildings = [];
   BLOCKS.forEach((block, index) => {
     const w = block.x1 - block.x0, d = block.z1 - block.z0, x = (block.x0 + block.x1) / 2, z = (block.z0 + block.z1) / 2;
     if (block.kind !== 'building') {
@@ -70,8 +73,15 @@ export function createWorld(host, stateProvider, onSelect, onLocate = () => {}, 
     const parts = Math.max(1, Math.min(3, Math.round(long / 8)));
     for (let part = 0; part < parts; part++) {
       const height = .8 + ((index * 5 + part * 3) % 6) * .25, offset = -long / 2 + long * (part + .5) / parts;
-      outline(box(alongX ? long / parts : short, height, alongX ? short : long / parts, walls[(index + part) % 3],
-        x + (alongX ? offset : 0), .14 + height / 2, z + (alongX ? 0 : offset)));
+      const mesh = box(alongX ? long / parts : short, height, alongX ? short : long / parts, walls[(index + part) % 3],
+        x + (alongX ? offset : 0), .14 + height / 2, z + (alongX ? 0 : offset));
+      outline(mesh);
+      // The navigation cells under this volume, so an agent's map can show only the buildings it has seen.
+      const cells = [], reach = long / parts / 2 + SIDEWALK, depth = short / 2 + SIDEWALK;
+      for (let cx = mesh.position.x - (alongX ? reach : depth) + .5; cx < mesh.position.x + (alongX ? reach : depth); cx++) {
+        for (let cz = mesh.position.z - (alongX ? depth : reach) + .5; cz < mesh.position.z + (alongX ? depth : reach); cz++) cells.push(indexOf(cx, cz));
+      }
+      buildings.push({mesh, cells: cells.filter(cell => cell >= 0)});
     }
   });
 
@@ -104,23 +114,35 @@ export function createWorld(host, stateProvider, onSelect, onLocate = () => {}, 
   }
 
   const exhibit = mat(BLUE), charger = mat(INK), stone = mat(0xffffff);
-  const placeLabels = [];
+  const places = [];
   for (const item of PLACES) {
-    const {x, z} = item.position;
+    const {x, z} = item.position, objects = [];
+    const base = material => {
+      const disc = new THREE.Mesh(new THREE.CylinderGeometry(.8, .8, .06, 32), material);
+      disc.position.set(x, .05, z);
+      scene.add(disc);
+      objects.push(disc);
+    };
     if (item.kind === 'exhibit') {
-      const disc = new THREE.Mesh(new THREE.CylinderGeometry(.8, .8, .06, 32), exhibit);
-      disc.position.set(x, .05, z);
-      scene.add(disc);
-      box(.45, 1.5, .45, stone, x, .8, z);
-      box(.55, .14, .55, exhibit, x, 1.62, z);
-      placeLabels.push({element: addLabel(item.name, 'place-label'), position: {x, z: z + 1.6}});
+      base(exhibit);
+      objects.push(box(.45, 1.5, .45, stone, x, .8, z), box(.55, .14, .55, exhibit, x, 1.62, z));
     } else if (item.kind === 'charger') {
-      const disc = new THREE.Mesh(new THREE.CylinderGeometry(.8, .8, .06, 32), charger);
-      disc.position.set(x, .05, z);
-      scene.add(disc);
-      box(.5, .8, .3, stone, x, .45, z - .5);
-      box(.52, .12, .32, charger, x, .91, z - .5);
-    }
+      base(charger);
+      objects.push(box(.5, .8, .3, stone, x, .45, z - .5), box(.52, .12, .32, charger, x, .91, z - .5));
+    } else if (item.kind === 'depot') {
+      base(charger);
+      objects.push(outline(box(1.5, .7, .9, stone, x, .45, z - .9)), box(1.52, .1, .92, charger, x, .85, z - .9));
+    } else continue;
+    places.push({id: item.id, objects, hidden: false, position: {x, z: z + 1.6},
+      element: item.kind === 'charger' ? null : addLabel(item.name, 'place-label')});
+  }
+  // Roadworks: a shaded patch with an ink border.
+  const zones = [];
+  for (const zone of HINDRANCES) {
+    const patch = box(zone.x1 - zone.x0, .02, zone.z1 - zone.z0, mat(0xd2d2d2), (zone.x0 + zone.x1) / 2, .012, (zone.z0 + zone.z1) / 2);
+    patch.castShadow = false;
+    outline(patch);
+    zones.push({mesh: patch, cell: indexOf(zone.x0 + .5, zone.z0 + .5)});
   }
   const compass = new THREE.Vector3(SIZE.x - 3, .3, SIZE.z - 2);
   scene.add(new THREE.ArrowHelper(new THREE.Vector3(0, 0, -1), compass, 3, 0x8a8a8a, .6, .36));
@@ -162,6 +184,8 @@ export function createWorld(host, stateProvider, onSelect, onLocate = () => {}, 
   }
 
   const overlay = createSpatialOverlay(scene, labelHost, placeLabel);
+  const agentOverlay = createAgentOverlay(scene, labelHost, placeLabel, {buildings, places, zones});
+  const agentAt = () => spatial?.agents ? agentOverlay.agentAt(raycaster) : null;
 
   function updateCamera() {
     // At zoom 1 the whole city fits the window.
@@ -247,8 +271,9 @@ export function createWorld(host, stateProvider, onSelect, onLocate = () => {}, 
     if (!last) {
       if (event.pointerType !== 'mouse') return;
       const occupant = occupantAt(event), entity = occupant ? null : delivery?.entityAt(raycaster);
-      hoverId = occupant || entity || null;
-      canvas.style.cursor = occupant ? 'grab' : entity ? 'pointer' : '';
+      const agent = occupant || entity ? null : agentAt();
+      hoverId = occupant || entity || agent || null;
+      canvas.style.cursor = occupant ? 'grab' : entity || agent ? 'pointer' : '';
       return;
     }
     const next = {x: event.clientX, y: event.clientY};
@@ -291,6 +316,8 @@ export function createWorld(host, stateProvider, onSelect, onLocate = () => {}, 
     }
     if (moved || event.type !== 'pointerup') return;
     aim(event);
+    const agent = agentAt();
+    if (agent) { spatial.agents.click(agent); return; }
     const picked = delivery?.entityAt(raycaster) || delivery?.segmentAt(raycaster);
     if (picked) { onSelect(picked); return; }
     const position = groundAt(event.clientX, event.clientY);
@@ -307,11 +334,16 @@ export function createWorld(host, stateProvider, onSelect, onLocate = () => {}, 
     updateCamera();
     const attention = [focusId, hoverId];
     delivery?.update(stateProvider(), selected, attention);
-    for (const {element, position} of placeLabels) placeLabel(element, position, .1);
+    for (const {element, position, hidden} of places) {
+      if (!element) continue;
+      placeLabel(element, position, .1);
+      if (hidden) element.hidden = true;
+    }
     placeLabel(compassLabel, {x: compass.x, z: compass.z - 4.2}, .2);
     if (locationSelection?.showLabel) placeLabel(queryLabel, locationSelection.position, .32, -16);
     else queryLabel.hidden = true;
     if (spatial) overlay.update(spatial.snapshot(), spatial.occupants(), attention);
+    agentOverlay.update(spatial?.agents?.view() || null, attention);
     renderer.render(scene, camera);
   }
 

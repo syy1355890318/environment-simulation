@@ -9,7 +9,7 @@ const field = (label, name, value, attributes = 'min="0.01"') =>
   `<div class="row"><dt><label for="field-${name}">${escape(label)}</label></dt><dd><input id="field-${name}" data-field="${name}" type="number" step="0.1" ${attributes} value="${value}"></dd></div>`;
 const capitalized = text => text[0].toUpperCase() + text.slice(1);
 
-export function createInspector({getModel, getWorld, spatial, notify, onChange}) {
+export function createInspector({getModel, getWorld, spatial, notify, onChange, agents = null}) {
   const card = document.getElementById('inspector');
   const state = () => getModel().state;
   const delivery = () => state().delivery !== false;
@@ -22,6 +22,7 @@ export function createInspector({getModel, getWorld, spatial, notify, onChange})
 
   function location() {
     if (!selection) return null;
+    if (selection.kind === 'agent') return agents?.card(selection.id) || null;
     if (selection.kind !== 'object') return selection.result;
     try { return objectLocation(state(), selection.id); } catch { return null; }
   }
@@ -74,6 +75,7 @@ export function createInspector({getModel, getWorld, spatial, notify, onChange})
   }
 
   function content(result) {
+    if (selection.kind === 'agent') return [result.title, result.html];
     if (selection.kind !== 'object') return [result.name, placeBody(result)];
     const {robot, package: parcel, segments, occupants} = state();
     if (selection.id === robot.id) return [`Robot ${robot.id}`, robotBody()];
@@ -102,7 +104,7 @@ export function createInspector({getModel, getWorld, spatial, notify, onChange})
       if (card.dataset.html !== html) { card.innerHTML = html; card.dataset.html = html; }
     }
     const world = getWorld();
-    const isObject = selection.kind === 'object';
+    const isObject = selection.kind !== 'place';
     world?.setFocus(isObject ? selection.id : null);
     world?.select(result.kind === 'segment' ? result.id : null);
     world?.highlightLocation(result.kind === 'segment' ? {...result, radius: 0.65}
@@ -126,6 +128,8 @@ export function createInspector({getModel, getWorld, spatial, notify, onChange})
       getWorld()?.centerOn(position);
       return {kind: 'found'};
     }
+    const agent = agents?.position(text.trim().toUpperCase());
+    if (agent) { show({kind: 'agent', id: text.trim().toUpperCase()}); getWorld()?.centerOn(agent); return {kind: 'found'}; }
     const id = state().occupants.find(item => item.id.toLowerCase() === text.trim().toLowerCase())?.id;
     if (id) { show({kind: 'object', id}); getWorld()?.centerOn(objectLocation(state(), id).position); return {kind: 'found'}; }
     const result = delivery() ? resolveDescription(state(), text) : findInCity(text);
@@ -173,5 +177,11 @@ export function createInspector({getModel, getWorld, spatial, notify, onChange})
     if (remove) { spatial.remove(remove.dataset.remove); onChange(); refresh(); }
   });
 
-  return {show, hide, refresh, isOpen, find, showResult, toggleObject};
+  // An agent's card is redrawn as it moves, so close on press rather than on a full click.
+  card.addEventListener('pointerdown', event => { if (selection?.kind === 'agent' && event.target.closest('[data-close]')) hide(); });
+  function toggleAgent(id) {
+    if (selection?.kind === 'agent' && selection.id === id) hide();
+    else show({kind: 'agent', id});
+  }
+  return {show, hide, refresh, isOpen, find, showResult, toggleObject, toggleAgent, selection: () => selection};
 }

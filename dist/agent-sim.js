@@ -6,7 +6,7 @@ import {createAgent, AGENT} from './agent.js';
 
 export const STEP = 0.1;
 export const LIMITS = {min: 2, max: 10};
-const MAX_STEPS_PER_CALL = 400, BODY = 0.3, GAP = 0.7, SQUEEZE_GAP = 0.3;
+const SAME_PATCH = 9, MAX_STEPS_PER_CALL = 400, BODY = 0.3, GAP = 0.7, SQUEEZE_GAP = 0.3;
 // Agents enter at the ends of the main streets.
 const GATE_POSITIONS = [[-44, 8], [44, -4], [-2, -32], [28, 32], [-30, -32], [44, 24], [-44, -22], [10, -32], [-44, 24], [44, 8]];
 export const GATES = GATE_POSITIONS.map(([x, z], n) => ({id: `gate-${n + 1}`, name: `Gate ${n + 1}`, kind: 'gate', position: {x: x + .5, z: z + .5}}));
@@ -102,15 +102,16 @@ export function createAgentSim({count = 4, seed = 1, useLandmarks = true} = {}) 
     },
     // For each landmark anyone has left, how many agents have it.
     landmarkHeat() {
-      const heat = new Map();
+      const heat = [];
       for (const agent of agents) for (const landmark of agent.memory.landmarks) {
         if (landmark.kind === 'gate') continue;
-        const key = landmark.placeId || `${landmark.kind}:${Math.round(landmark.position.x / 6)},${Math.round(landmark.position.z / 6)}`;
-        const entry = heat.get(key) || {name: landmark.name, kind: landmark.kind, position: landmark.position, count: 0};
-        entry.count++;
-        heat.set(key, entry);
+        // Agents mark the same patch of slow ground at slightly different spots, so group those that are close.
+        let entry = heat.find(item => landmark.placeId ? item.placeId === landmark.placeId
+          : item.kind === landmark.kind && distance(item.position, landmark.position) < SAME_PATCH);
+        if (!entry) heat.push(entry = {name: landmark.name, kind: landmark.kind, placeId: landmark.placeId, position: landmark.position, holders: new Set()});
+        entry.holders.add(agent.id);
       }
-      return [...heat.values()];
+      return heat.map(({holders, ...entry}) => ({...entry, count: holders.size}));
     },
     summary() {
       const average = list => list.length ? list.reduce((sum, value) => sum + value, 0) / list.length : null;
