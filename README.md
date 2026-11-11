@@ -26,7 +26,7 @@ Add a person, recipient, or cone with **＋**, then drag it. Click one to place 
 
 ## The town
 
-The setting is a small harbor town holding an open-air art walk. Visitors come to see five outdoor exhibits and couriers carry parcels around town. The town is an island: the sea surrounds it, with boats on every side and the lighthouse at the end of a pier to the north. Roofs and trees are drawn in black lines only. Blue is kept for landmarks, the lighthouse, and agents.
+The setting is a small harbor town holding an open-air art walk. Visitors come to see five outdoor exhibits and couriers carry parcels around town. The town is an island: the sea surrounds it, with boats on every side and the lighthouse at the end of a pier to the north. Roofs and trees are drawn in black lines only. Blue is kept for landmarks, the lighthouse, and agents, plus one small accent per block (a door, an awning, a pennant, or a roof tank) so it is spread evenly.
 
 | District | Where | Buildings |
 |---|---|---|

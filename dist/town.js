@@ -4,7 +4,7 @@ import * as THREE from './vendor/three.module.js';
 import {SIZE, SIDEWALK, BLOCKS, PLACES, HINDRANCES} from './city.js';
 import {indexOf} from './nav.js';
 
-const INK = 0x141414, BLUE = 0x1f33c4, INK_CSS = '#141414', BLUE_CSS = '#1f33c4', PAPER_CSS = '#ffffff', SEA_CSS = '#f6f6f7', WAVE_CSS = 'rgba(31, 51, 196, .2)';
+const INK = 0x141414, BLUE = 0x1f33c4, INK_CSS = '#141414', BLUE_CSS = '#1f33c4', PAPER_CSS = '#ffffff', SEA_CSS = '#f6f6f7', WAVE_CSS = 'rgba(31, 51, 196, .58)';
 const BAY = 3, CURB = .14;
 // Lots that hold something special, found by a point inside them.
 const SPECIAL_LOTS = {clock: {x: -40, z: -29}, greenhouse: {x: -37, z: 30}, depot: {x: 15, z: 30}, mural: {x: 40, z: 2}};
@@ -168,7 +168,7 @@ export function buildTown(scene) {
 
   // --- Ground, sea, and pier ---
   const sea = standard({roughness: 1, map: canvasTexture(256, 256, (c, s) => {
-    paper(c, s, s, SEA_CSS); pen(c, WAVE_CSS, 2);
+    paper(c, s, s, SEA_CSS); pen(c, WAVE_CSS, 2.2);
     // Three staggered rows of double-crested waves, plus a few short ripples.
     for (let row = 0; row < 3; row++) for (let i = 0; i < 2; i++) {
       const x = i * s / 2 + (row % 2 ? s / 4 : 0) + 10, y = row * s / 3 + 34;
@@ -188,7 +188,7 @@ export function buildTown(scene) {
 
   const hullShape = new THREE.Shape([[-1.7, -.62], [.9, -.62], [2, 0], [.9, .62], [-1.7, .62]].map(([x, y]) => new THREE.Vector2(x, y)));
   const hullGeometry = new THREE.ExtrudeGeometry(hullShape, {depth: .7, bevelEnabled: false}).rotateX(-Math.PI / 2);
-  const cloth = standard({color: 0xffffff, side: THREE.DoubleSide}), darkCloth = standard({color: INK, side: THREE.DoubleSide}), wake = standard({color: 0xd9d9de});
+  const cloth = standard({color: 0xffffff, side: THREE.DoubleSide}), darkCloth = standard({color: INK, side: THREE.DoubleSide}), blueCloth = standard({color: BLUE, side: THREE.DoubleSide}), wake = standard({color: 0xd9d9de});
   const sailStripes = standard({side: THREE.DoubleSide, map: canvasTexture(64, 64, (c, s) => {
     paper(c, s, s); c.fillStyle = INK_CSS;
     for (let y = 8; y < s; y += 22) c.fillRect(0, y, s, 3);
@@ -202,7 +202,7 @@ export function buildTown(scene) {
     mesh.add(new THREE.LineLoop(geometry, edge));
     return mesh;
   }
-  function boat(x, z, turn, kind) {
+  function boat(x, z, turn, kind, bright) {
     const group = new THREE.Group();
     group.position.set(x, WATER_Y, z);
     group.rotation.y = turn;
@@ -214,19 +214,19 @@ export function buildTown(scene) {
       add(group, new THREE.CylinderGeometry(.05, .06, 4.2, 6), ink, .2, 2.6, 0);
       box(group, 2.1, .06, .06, ink, -.85, 1.1, 0);
       sail(group, [[.1, 1.15, 0], [-1.9, 1.15, 0], [.1, 4.5, 0]], sailStripes);
-      sail(group, [[.3, .9, 0], [1.85, .9, 0], [.3, 3.9, 0]], cloth);
-      sail(group, [[.2, 4.7, 0], [-.6, 4.5, 0], [.2, 4.3, 0]], darkCloth);
+      sail(group, [[.3, .9, 0], [1.85, .9, 0], [.3, 3.9, 0]], bright ? blueCloth : cloth);
+      sail(group, [[.2, 4.7, 0], [-.6, 4.5, 0], [.2, 4.3, 0]], bright ? blueCloth : darkCloth);
       outline(box(group, .8, .35, .7, white, -1, .72, 0));
     } else {
       // A fishing boat: wheelhouse, funnel, crates, and a short mast with a flag.
       outline(box(group, 1.1, .9, .95, white, -.6, 1, 0));
       box(group, .04, .34, .6, ink, -.04, 1.12, 0, false);
       outline(box(group, 1.3, .1, 1.1, white, -.6, 1.5, 0));
-      add(group, new THREE.CylinderGeometry(.14, .16, .7, 10), ink, -.9, 1.9, 0);
+      add(group, new THREE.CylinderGeometry(.14, .16, .7, 10), bright ? blue : ink, -.9, 1.9, 0);
       outline(box(group, .45, .35, .45, white, .7, .73, .2));
       outline(box(group, .4, .3, .4, white, 1.15, .7, -.2));
       add(group, new THREE.CylinderGeometry(.03, .03, 1.6, 5), ink, .35, 1.35, 0);
-      sail(group, [[.37, 2.15, 0], [1, 2, 0], [.37, 1.85, 0]], darkCloth);
+      sail(group, [[.37, 2.15, 0], [1, 2, 0], [.37, 1.85, 0]], bright ? blueCloth : darkCloth);
     }
     scene.add(group);
   }
@@ -235,7 +235,7 @@ export function buildTown(scene) {
     [SIZE.x + 10, -10, 1.2, 'sail'], [SIZE.x + 19, 18, -1.9, 'fish'], [SIZE.x + 8, 40, 2.2, 'sail'],
     [20, SIZE.z + 12, 3.4, 'sail'], [-12, SIZE.z + 8, .2, 'fish'], [-38, SIZE.z + 16, -.6, 'sail'],
     [-SIZE.x - 11, 14, -1.3, 'sail'], [-SIZE.x - 18, -14, 1.7, 'fish'], [-SIZE.x - 8, -30, .5, 'sail']]
-    .forEach(([bx, bz, turn, kind]) => boat(bx, bz, turn, kind));
+    .forEach(([bx, bz, turn, kind], n) => boat(bx, bz, turn, kind, n % 3 === 0));
 
   const buildings = [];
   const cellsIn = rect => {
@@ -319,6 +319,11 @@ export function buildTown(scene) {
     return group;
   }
 
+  const pennantGeometry = new THREE.BufferGeometry();
+  pennantGeometry.setAttribute('position', new THREE.Float32BufferAttribute([0, 0, 0, -1.3, -.35, 0, 0, -.7, 0], 3));
+  pennantGeometry.computeVertexNormals();
+  const ACCENTS = ['door', 'pennant', 'awning', 'tank', 'pennant', 'door'];
+
   const DISTRICTS = {
     homes: () => ({floors: pick([1, 1, 2, 2]), floorHeight: 3, facade: facade.house, roof: pick(['gable', 'gable', 'gable', 'hip']), chimney: true}),
     market: () => ({floors: pick([2, 2, 3, 3, 3, 4]), floorHeight: 3, facade: facade.shop, roof: pick(['flat', 'flat', 'flat', 'hip', 'hip']), awning: true}),
@@ -330,7 +335,7 @@ export function buildTown(scene) {
     return z < -13 ? 'harbor' : z > 21 ? 'works' : x < -17 ? 'homes' : 'market';
   }
 
-  function building(lot, inner, style, frontage) {
+  function building(lot, inner, style, frontage, accent = null) {
     const h = style.floors * style.floorHeight;
     const {solid, L, S, alongX} = unit(lot, inner, h);
     walls(solid, L, h, S, style.facade, style.floors);
@@ -350,13 +355,26 @@ export function buildTown(scene) {
         box(solid, 1, .7, 1, ink, x, top + .35, z);
       }
     }
+    // The long faces that look onto a street. Local +z is one long face, local -z the other.
+    const streetSides = [-1, 1].filter(side => alongX ? (side > 0 ? frontage.south : frontage.north) : (side > 0 ? frontage.east : frontage.west));
     if (style.awning) {
-      // Awnings hang over the faces that look onto a street. Local +z is the lot's long face.
-      for (const side of [-1, 1]) {
-        if (!(alongX ? (side > 0 ? frontage.south : frontage.north) : (side > 0 ? frontage.east : frontage.west))) continue;
-        const awning = outline(box(solid, L - .8, .08, 1, white, 0, CURB + 2.7, side * (S / 2 + .42)));
+      streetSides.forEach((side, n) => {
+        const awning = outline(box(solid, L - .8, .08, 1, accent === 'awning' && n === 0 ? blue : white, 0, CURB + 2.7, side * (S / 2 + .42)));
         awning.rotation.x = side * .3;
-      }
+      });
+    }
+    // The block's one touch of blue: a door or awning if a long face is on a street, otherwise something on the roof.
+    if (accent === 'door' && streetSides.length) {
+      outline(box(solid, 1, 2.1, .08, blue, (random() - .5) * (L - 2.4), CURB + 1.05, streetSides[0] * (S / 2 + .05), false));
+    } else if (accent === 'tank' && style.roof === 'flat') {
+      const x = (random() - .5) * (L - 2), z = (random() - .5) * (S - 2);
+      add(solid, new THREE.CylinderGeometry(.6, .6, 1, 14), blue, x, top + 1.1, z);
+      box(solid, .9, .6, .9, ink, x, top + .3, z);
+    } else if (accent && !(accent === 'awning' && style.awning && streetSides.length)) {
+      // A festival pennant on a pole.
+      const peak = style.roof === 'flat' ? top : top + 1.2, x = L / 2 - .5;
+      add(solid, new THREE.CylinderGeometry(.04, .04, 2.6, 5), ink, x, peak + 1.3, 0);
+      add(solid, pennantGeometry, blueCloth, x, peak + 2.6, 0, false);
     }
   }
   function garden(lot, inner) {
@@ -426,7 +444,7 @@ export function buildTown(scene) {
   }
 
   // --- Blocks into lots ---
-  let muralWall = null;
+  let muralWall = null, blockNumber = 0;
   for (const block of BLOCKS) {
     const w = block.x1 - block.x0, d = block.z1 - block.z0, x = (block.x0 + block.x1) / 2, z = (block.z0 + block.z1) / 2;
     if (block.kind === 'park') {
@@ -443,7 +461,8 @@ export function buildTown(scene) {
     while (long - cuts.at(-1) >= 12) cuts.push(cuts.at(-1) + 5 + Math.round(random() * 4) / 2);
     if (long - cuts.at(-1) > 9) cuts.push((cuts.at(-1) + long) / 2);
     cuts.push(long);
-    const district = districtOf(block);
+    const district = districtOf(block), accentLot = Math.floor((cuts.length - 1) / 2);
+    let accent = ACCENTS[blockNumber++ % ACCENTS.length];
     for (let row = 0; row < rows; row++) for (let i = 0; i < cuts.length - 1; i++) {
       const a0 = cuts[i], a1 = cuts[i + 1], b0 = short * row / rows, b1 = short * (row + 1) / rows;
       const lot = alongX ? {x0: block.x0 + a0, x1: block.x0 + a1, z0: block.z0 + b0, z1: block.z0 + b1}
@@ -459,7 +478,12 @@ export function buildTown(scene) {
         muralWall = inner;
         building(lot, inner, {...DISTRICTS.market(), floors: 3, roof: 'flat', awning: false}, frontage);
       } else if (district === 'homes' && random() < .14) garden(lot, inner);
-      else building(lot, inner, DISTRICTS[district](), frontage);
+      else {
+        // Give the accent to the first ordinary building from the middle of the block onward.
+        const marked = row === 0 && i >= accentLot ? accent : null;
+        if (marked) accent = null;
+        building(lot, inner, DISTRICTS[district](), frontage, marked);
+      }
     }
   }
 
